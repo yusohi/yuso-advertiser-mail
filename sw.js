@@ -1,4 +1,4 @@
-const CACHE_VERSION = "yuso-mail-v2026-06-11-thread-delete";
+const CACHE_VERSION = "yuso-mail-v2026-06-11-gmail-ui";
 const APP_SHELL = ["./", "./index.html", "./styles.css", "./app.js", "./manifest.webmanifest", "./icon.svg"];
 
 self.addEventListener("install", (event) => {

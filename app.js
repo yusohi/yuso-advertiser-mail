@@ -4,6 +4,7 @@ const API_URL = "https://bsmfvlodkqyfawsppjno.supabase.co/functions/v1/yuso-mail
 const CHANGE_PASSWORD_URL = "https://bsmfvlodkqyfawsppjno.supabase.co/functions/v1/yuso-mail/api/change-password";
 const DELETE_DEAL_URL = "https://bsmfvlodkqyfawsppjno.supabase.co/functions/v1/yuso-mail/api/delete-deal";
 const PASSWORD_KEY = "yuso-mail-password";
+const LAYOUT_KEY = "yuso-mail-layout";
 
 const state = {
   selectedId: "",
@@ -50,7 +51,7 @@ function setLoading(isLoading) {
   if (!button) return;
   button.disabled = isLoading;
   button.classList.toggle("is-loading", isLoading);
-  button.textContent = isLoading ? "확인 중" : "새로고침";
+  button.textContent = isLoading ? "…" : "↻";
 }
 
 function updateSyncStatus() {
@@ -123,6 +124,33 @@ function showLogin(message = "") {
 function hideLogin() {
   $("#loginScreen").classList.add("hidden");
   $("#loginError").textContent = "";
+}
+
+function applyLayoutMode() {
+  const compact = localStorage.getItem(LAYOUT_KEY) === "compact";
+  document.body.classList.toggle("compact", compact);
+  const toggle = $("#layoutToggle");
+  if (toggle) {
+    toggle.setAttribute("aria-label", compact ? "목록 크게 보기" : "목록 작게 보기");
+  }
+}
+
+function toggleLayoutMode() {
+  const next = document.body.classList.contains("compact") ? "comfortable" : "compact";
+  localStorage.setItem(LAYOUT_KEY, next);
+  applyLayoutMode();
+}
+
+function openAccountPanel() {
+  $("#accountPanel").classList.remove("hidden");
+}
+
+function closeAccountPanel() {
+  $("#accountPanel").classList.add("hidden");
+}
+
+function toggleAccountPanel() {
+  $("#accountPanel").classList.toggle("hidden");
 }
 
 function openPasswordModal() {
@@ -211,8 +239,10 @@ function renderSummary() {
 function renderFilters() {
   $("#statusFilters").innerHTML = statusLabels
     .map(
-      ([id, label]) =>
-        `<button class="${state.filter === id ? "active" : ""}" data-filter="${id}" type="button">${label}</button>`,
+      ([id, label]) => {
+        const count = id === "all" ? deals.length : deals.filter((deal) => deal.status === id).length;
+        return `<button class="${state.filter === id ? "active" : ""}" data-filter="${id}" type="button"><span>${label}</span><strong>${count}</strong></button>`;
+      },
     )
     .join("");
 }
@@ -340,6 +370,10 @@ function render() {
 }
 
 document.addEventListener("click", (event) => {
+  if (!event.target.closest("#accountPanel") && !event.target.closest("#profileButton")) {
+    closeAccountPanel();
+  }
+
   const deleteButton = event.target.closest("[data-delete-id]");
   if (deleteButton) {
     const id = deleteButton.dataset.deleteId;
@@ -400,15 +434,26 @@ $("#refreshButton").addEventListener("click", () => {
   loadDeals({ manual: true });
 });
 
+$("#layoutToggle").addEventListener("click", toggleLayoutMode);
+
+$("#profileButton").addEventListener("click", (event) => {
+  event.stopPropagation();
+  toggleAccountPanel();
+});
+
 $("#logoutButton").addEventListener("click", () => {
   localStorage.removeItem(PASSWORD_KEY);
+  closeAccountPanel();
   deals = [];
   state.selectedId = "";
   render();
   showLogin();
 });
 
-$("#changePasswordButton").addEventListener("click", openPasswordModal);
+$("#changePasswordButton").addEventListener("click", () => {
+  closeAccountPanel();
+  openPasswordModal();
+});
 
 $("#cancelPasswordChange").addEventListener("click", closePasswordModal);
 
@@ -458,6 +503,7 @@ $("#loginForm").addEventListener("submit", async (event) => {
 });
 
 registerServiceWorker();
+applyLayoutMode();
 render();
 loadDeals();
 setInterval(() => {

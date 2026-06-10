@@ -5,9 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#f7f7f4" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-title" content="유소 광고메일" />
+    <meta name="apple-mobile-web-app-title" content="메일 도우미" />
     <meta name="robots" content="noindex, nofollow" />
-    <title>광고주 메일 파이프라인</title>
+    <title>메일 도우미</title>
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="icon" href="./icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="./icon.svg" />
@@ -28,39 +28,70 @@
       </form>
     </section>
 
-    <main class="app-shell">
-      <header class="topbar">
-        <div>
-          <p class="eyebrow" id="syncStatus">유소채널 메일함 · 불러오는 중</p>
-          <h1>광고주 메일 파이프라인</h1>
+    <main class="gmail-shell">
+      <header class="appbar">
+        <div class="brand-area">
+          <button class="icon-button" id="layoutToggle" type="button" aria-label="목록 크기 조절">☰</button>
+          <div class="brand-mark" aria-hidden="true">M</div>
+          <h1>메일 도우미</h1>
         </div>
-        <div class="summary" id="summary"></div>
+
+        <label class="search-wrap" aria-label="메일 검색">
+          <span aria-hidden="true">⌕</span>
+          <input id="searchInput" type="search" placeholder="메일 검색" />
+        </label>
+
+        <div class="app-actions">
+          <button class="icon-button" id="refreshButton" type="button" aria-label="새로고침">↻</button>
+          <button class="profile-button" id="profileButton" type="button" aria-label="내 정보">
+            <span>소정</span>
+          </button>
+          <section class="account-panel hidden" id="accountPanel" aria-label="내 정보 메뉴">
+            <div class="account-head">
+              <div class="profile-large">소정</div>
+              <div>
+                <strong>유소채널</strong>
+                <p>yuso@wootso.com</p>
+              </div>
+            </div>
+            <button id="changePasswordButton" type="button">비밀번호 설정</button>
+            <button id="logoutButton" type="button">로그아웃</button>
+          </section>
+        </div>
       </header>
 
-      <section class="controls" aria-label="필터">
-        <div class="search-wrap">
-          <span aria-hidden="true">⌕</span>
-          <input id="searchInput" type="search" placeholder="광고주, 브랜드, 상태 검색" />
-        </div>
-        <div class="control-actions">
-          <button class="refresh-button" id="refreshButton" type="button">새로고침</button>
-          <button class="refresh-button" id="changePasswordButton" type="button">비밀번호 변경</button>
-          <button class="refresh-button" id="logoutButton" type="button">로그아웃</button>
-          <div class="segments" id="statusFilters" aria-label="상태 필터"></div>
-        </div>
-      </section>
-
-      <section class="dashboard">
-        <aside class="deal-list" aria-label="광고주 목록">
-          <div class="list-header">
-            <strong>대화 중인 광고주</strong>
-            <span id="resultCount"></span>
+      <div class="workspace">
+        <aside class="sidebar" aria-label="메일함">
+          <button class="compose-button" type="button">✎ <span>새 메일 초안</span></button>
+          <nav class="mail-nav" aria-label="상태 필터">
+            <div id="statusFilters"></div>
+          </nav>
+          <div class="sidebar-section">
+            <div class="sidebar-title">
+              <span>요약</span>
+            </div>
+            <div class="summary" id="summary"></div>
           </div>
-          <div id="dealList"></div>
         </aside>
 
-        <section class="detail" id="detail" aria-label="광고주 상세"></section>
-      </section>
+        <section class="mail-surface">
+          <div class="mail-toolbar">
+            <div>
+              <p class="eyebrow" id="syncStatus">유소채널 메일함 · 불러오는 중</p>
+              <strong>광고주 대화</strong>
+            </div>
+            <span id="resultCount"></span>
+          </div>
+
+          <section class="dashboard">
+            <aside class="deal-list" aria-label="광고주 목록">
+              <div id="dealList"></div>
+            </aside>
+
+            <section class="detail" id="detail" aria-label="광고주 상세"></section>
+          </section>
+        </section>
+      </div>
     </main>
 
     <section class="modal-screen hidden" id="passwordModal" aria-hidden="true">

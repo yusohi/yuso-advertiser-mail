@@ -1,7 +1,7 @@
 {
-  "name": "유소 광고주 메일 파이프라인",
-  "short_name": "유소 광고메일",
-  "description": "유소채널로 온 광고주 메일과 다음 액션을 확인하는 대시보드",
+  "name": "메일 도우미",
+  "short_name": "메일 도우미",
+  "description": "유소채널로 온 광고주 메일과 다음 액션을 확인하는 메일 도우미",
   "lang": "ko",
   "start_url": "./index.html",
   "scope": "./",
