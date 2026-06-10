@@ -8,6 +8,7 @@ const GMAIL_AUTH_URL = "https://bsmfvlodkqyfawsppjno.supabase.co/functions/v1/yu
 const GMAIL_SYNC_URL = "https://bsmfvlodkqyfawsppjno.supabase.co/functions/v1/yuso-mail/api/gmail/sync";
 const PASSWORD_KEY = "yuso-mail-password";
 const LAYOUT_KEY = "yuso-mail-layout";
+const GMAIL_AUTO_CONNECT_KEY = "yuso-mail-gmail-auto-connect-attempted";
 
 const state = {
   selectedId: "",
@@ -186,6 +187,8 @@ async function postPrivate(url, body = {}) {
 
 async function refreshGmailStatus() {
   const status = $("#gmailStatus");
+  const connectButton = $("#connectGmailButton");
+  const syncButton = $("#syncGmailButton");
   if (!localStorage.getItem(PASSWORD_KEY)) return;
   try {
     const data = await postPrivate(GMAIL_STATUS_URL);
@@ -200,10 +203,21 @@ async function refreshGmailStatus() {
         status.textContent = "Gmail 연결 전";
       }
     }
+    if (connectButton) {
+      connectButton.hidden = state.gmailConnected || !state.gmailConfigured;
+      connectButton.textContent = state.gmailConfigured ? "Gmail 연결" : "Gmail 설정 필요";
+    }
+    if (syncButton) {
+      syncButton.hidden = !state.gmailConnected;
+    }
+    return data;
   } catch {
     state.gmailConfigured = false;
     state.gmailConnected = false;
     if (status) status.textContent = "Gmail 상태 확인 실패";
+    if (connectButton) connectButton.hidden = false;
+    if (syncButton) syncButton.hidden = true;
+    return null;
   } finally {
     updateSyncStatus();
   }
@@ -215,6 +229,20 @@ async function connectGmail() {
     window.location.href = data.url;
   } catch (error) {
     showToast(error.message || "Gmail 연결을 시작하지 못했습니다.");
+  }
+}
+
+async function ensureGmailReady() {
+  const status = await refreshGmailStatus();
+  if (!status) return;
+  if (state.gmailConnected) {
+    await syncGmailNow({ silent: true });
+    return;
+  }
+  if (state.gmailConfigured && !sessionStorage.getItem(GMAIL_AUTO_CONNECT_KEY)) {
+    sessionStorage.setItem(GMAIL_AUTO_CONNECT_KEY, "1");
+    showToast("Gmail 연결 화면으로 이동합니다.");
+    await connectGmail();
   }
 }
 
@@ -657,19 +685,27 @@ $("#loginForm").addEventListener("submit", async (event) => {
   localStorage.setItem(PASSWORD_KEY, password);
   hideLogin();
   await loadDeals({ manual: true });
-  await refreshGmailStatus();
+  await ensureGmailReady();
 });
 
 registerServiceWorker();
 applyLayoutMode();
 render();
-loadDeals();
-refreshGmailStatus();
-if (new URLSearchParams(window.location.search).get("gmail") === "connected") {
-  window.history.replaceState({}, "", window.location.pathname);
-  showToast("Gmail 연결이 완료되었습니다. 메일을 동기화합니다.");
-  syncGmailNow();
+
+async function boot() {
+  await loadDeals();
+  const params = new URLSearchParams(window.location.search);
+  if (params.get("gmail") === "connected") {
+    sessionStorage.removeItem(GMAIL_AUTO_CONNECT_KEY);
+    window.history.replaceState({}, "", window.location.pathname);
+    showToast("Gmail 연결이 완료되었습니다. 메일을 동기화합니다.");
+    await syncGmailNow();
+    return;
+  }
+  await ensureGmailReady();
 }
+
+boot();
 setInterval(() => {
   loadDeals();
 }, 60_000);
