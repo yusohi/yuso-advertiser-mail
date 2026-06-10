@@ -95,7 +95,7 @@ async function loadDeals({ manual = false } = {}) {
     }
     const payload = await response.json();
     if (!Array.isArray(payload.deals)) {
-      throw new Error("data.json에 deals 배열이 없습니다");
+      throw new Error("API 응답에 deals 배열이 없습니다");
     }
 
     deals = payload.deals;
