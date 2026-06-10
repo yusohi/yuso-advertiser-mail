@@ -57,7 +57,7 @@ function setLoading(isLoading) {
 function updateSyncStatus() {
   const status = $("#syncStatus");
   if (!status) return;
-  const suffix = state.lastError ? ` · ${state.lastError}` : " · 60초마다 자동 확인";
+  const suffix = state.lastError ? ` · ${state.lastError}` : " · 1분마다 최신 스냅샷 확인";
   status.textContent = `유소채널 메일함 · ${state.updatedAt}${suffix}`;
 }
 
@@ -322,7 +322,7 @@ function renderDetail() {
         <div class="draft">${deal.draft}</div>
       </section>
       <section class="section" id="mailThreadSection" style="grid-column: 1 / -1;">
-        <h3>전체 메일 원문 <span class="section-count">${messages.length}개</span></h3>
+        <h3>저장된 메일 원문 <span class="section-count">${messages.length}개</span></h3>
         <div class="mail-thread">
           ${messages
             .map(
