@@ -1,0 +1,7 @@
+services:
+  - type: static
+    name: yuso-advertiser-mail
+    plan: free
+    buildCommand: ""
+    staticPublishPath: .
+    pullRequestPreviewsEnabled: false

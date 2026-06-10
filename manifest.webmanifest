@@ -1,0 +1,19 @@
+{
+  "name": "유소 광고주 메일 파이프라인",
+  "short_name": "유소 광고메일",
+  "description": "유소채널로 온 광고주 메일과 다음 액션을 확인하는 대시보드",
+  "lang": "ko",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f7f7f4",
+  "theme_color": "#f7f7f4",
+  "icons": [
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
