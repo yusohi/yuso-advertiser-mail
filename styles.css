@@ -284,20 +284,49 @@ h1 {
   color: var(--muted);
 }
 
-.deal-button {
+.deal-row {
   width: 100%;
   display: grid;
+  grid-template-columns: 1fr 42px;
+  align-items: stretch;
+  background: transparent;
+  border-bottom: 1px solid var(--line);
+}
+
+.deal-row.active {
+  background: #f0f3ef;
+}
+
+.deal-button {
+  display: grid;
   gap: 8px;
+  min-width: 0;
   padding: 16px;
   text-align: left;
   background: transparent;
   border: 0;
-  border-bottom: 1px solid var(--line);
   cursor: pointer;
 }
 
-.deal-button.active {
-  background: #f0f3ef;
+.delete-deal {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  min-height: 42px;
+  border: 0;
+  border-left: 1px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.delete-deal:hover,
+.delete-deal:focus {
+  color: var(--red);
+  background: #fbf3f3;
+  outline: 0;
 }
 
 .deal-title {
@@ -441,6 +470,11 @@ h1 {
 .section h3 {
   margin: 0 0 12px;
   font-size: 15px;
+}
+
+.section-count {
+  color: var(--muted);
+  font-weight: 500;
 }
 
 .section ul {

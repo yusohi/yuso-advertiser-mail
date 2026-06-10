@@ -2,6 +2,7 @@ let deals = [];
 
 const API_URL = "https://bsmfvlodkqyfawsppjno.supabase.co/functions/v1/yuso-mail/api/data";
 const CHANGE_PASSWORD_URL = "https://bsmfvlodkqyfawsppjno.supabase.co/functions/v1/yuso-mail/api/change-password";
+const DELETE_DEAL_URL = "https://bsmfvlodkqyfawsppjno.supabase.co/functions/v1/yuso-mail/api/delete-deal";
 const PASSWORD_KEY = "yuso-mail-password";
 
 const state = {
@@ -162,6 +163,31 @@ async function changePassword(currentPassword, newPassword) {
   }
 }
 
+async function deleteDeal(id) {
+  const password = localStorage.getItem(PASSWORD_KEY);
+  if (!password) {
+    showLogin();
+    return;
+  }
+
+  const response = await fetch(DELETE_DEAL_URL, {
+    method: "POST",
+    cache: "no-store",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ password, id }),
+  });
+  if (response.status === 401) {
+    localStorage.removeItem(PASSWORD_KEY);
+    showLogin("비밀번호가 맞지 않습니다.");
+    throw new Error("unauthorized");
+  }
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`);
+  }
+}
+
 function filteredDeals() {
   const query = state.query.trim().toLowerCase();
   return deals.filter((deal) => {
@@ -201,14 +227,17 @@ function renderList() {
   $("#dealList").innerHTML = items
     .map(
       (deal) => `
-      <button class="deal-button ${state.selectedId === deal.id ? "active" : ""}" data-id="${deal.id}" type="button">
-        <div class="deal-title">
-          <strong>${deal.advertiser}</strong>
-          <span class="badge ${deal.status}">${deal.statusLabel}</span>
-        </div>
-        <div class="deal-meta">${deal.brand}</div>
-        <div class="deal-meta">마지막 메일 ${deal.lastTouch}</div>
-      </button>
+      <div class="deal-row ${state.selectedId === deal.id ? "active" : ""}">
+        <button class="deal-button" data-id="${escapeAttr(deal.id)}" type="button">
+          <div class="deal-title">
+            <strong>${escapeHtml(deal.advertiser)}</strong>
+            <span class="badge ${deal.status}">${escapeHtml(deal.statusLabel)}</span>
+          </div>
+          <div class="deal-meta">${escapeHtml(deal.brand)}</div>
+          <div class="deal-meta">마지막 메일 ${escapeHtml(deal.lastTouch)}</div>
+        </button>
+        <button class="delete-deal" data-delete-id="${escapeAttr(deal.id)}" aria-label="${escapeAttr(deal.advertiser)} 삭제" type="button">×</button>
+      </div>
     `,
     )
     .join("");
@@ -220,6 +249,7 @@ function renderDetail() {
     $("#detail").innerHTML = `<p class="muted">검색 결과가 없습니다.</p>`;
     return;
   }
+  const messages = deal.messages || fallbackMessages(deal);
 
   $("#detail").innerHTML = `
     <div class="detail-head">
@@ -231,7 +261,7 @@ function renderDetail() {
         <div class="amount">${deal.amount}</div>
       </div>
       <div class="link-actions">
-        <button class="gmail-link" data-scroll-mail="true" type="button">메일 본문 보기</button>
+        <button class="gmail-link" data-scroll-mail="true" type="button">전체 원문 보기</button>
       </div>
     </div>
 
@@ -261,15 +291,15 @@ function renderDetail() {
         <h3>다음 메일 초안</h3>
         <div class="draft">${deal.draft}</div>
       </section>
-      <section class="section" style="grid-column: 1 / -1;">
-        <h3>메일 대화</h3>
+      <section class="section" id="mailThreadSection" style="grid-column: 1 / -1;">
+        <h3>전체 메일 원문 <span class="section-count">${messages.length}개</span></h3>
         <div class="mail-thread">
-          ${(deal.messages || fallbackMessages(deal))
+          ${messages
             .map(
-              (message) => `
+              (message, index) => `
                 <article class="mail-message">
                   <div class="mail-message-head">
-                    <strong>${escapeHtml(message.from)}</strong>
+                    <strong>${index + 1}. ${escapeHtml(message.from)}</strong>
                     <span>${escapeHtml(message.date)}</span>
                   </div>
                   <p>${escapeHtml(message.body)}</p>
@@ -310,6 +340,32 @@ function render() {
 }
 
 document.addEventListener("click", (event) => {
+  const deleteButton = event.target.closest("[data-delete-id]");
+  if (deleteButton) {
+    const id = deleteButton.dataset.deleteId;
+    const deal = deals.find((item) => item.id === id);
+    if (!deal) return;
+    if (!confirm(`${deal.advertiser} 메일을 목록에서 삭제할까요?`)) return;
+
+    deleteButton.disabled = true;
+    deleteDeal(id)
+      .then(() => {
+        deals = deals.filter((item) => item.id !== id);
+        if (state.selectedId === id) {
+          state.selectedId = filteredDeals()[0]?.id || deals[0]?.id || "";
+        }
+        render();
+        showToast("메일을 삭제했습니다.");
+      })
+      .catch(() => {
+        showToast("삭제하지 못했습니다.");
+      })
+      .finally(() => {
+        deleteButton.disabled = false;
+      });
+    return;
+  }
+
   const dealButton = event.target.closest("[data-id]");
   if (dealButton) {
     state.selectedId = dealButton.dataset.id;
@@ -326,10 +382,10 @@ document.addEventListener("click", (event) => {
 
   const scrollMailButton = event.target.closest("[data-scroll-mail]");
   if (scrollMailButton) {
-    const thread = document.querySelector(".mail-thread");
+    const thread = document.querySelector("#mailThreadSection");
     if (thread) {
       thread.scrollIntoView({ behavior: "smooth", block: "start" });
-      showToast("웹앱 안에서 메일 본문을 바로 보여줍니다.");
+      showToast("이전 대화까지 포함한 전체 원문으로 이동했습니다.");
     }
   }
 });
