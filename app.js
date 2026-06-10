@@ -1,5 +1,8 @@
 let deals = [];
 
+const API_URL = "https://bsmfvlodkqyfawsppjno.supabase.co/functions/v1/yuso-mail/api/data";
+const PASSWORD_KEY = "yuso-mail-password";
+
 const state = {
   selectedId: "",
   filter: "all",
@@ -65,9 +68,28 @@ function escapeHtml(value = "") {
 }
 
 async function loadDeals({ manual = false } = {}) {
+  const password = localStorage.getItem(PASSWORD_KEY);
+  if (!password) {
+    showLogin();
+    setLoading(false);
+    return;
+  }
+
   setLoading(true);
   try {
-    const response = await fetch(`./data.json?ts=${Date.now()}`, { cache: "no-store" });
+    const response = await fetch(`${API_URL}?ts=${Date.now()}`, {
+      method: "POST",
+      cache: "no-store",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ password }),
+    });
+    if (response.status === 401) {
+      localStorage.removeItem(PASSWORD_KEY);
+      showLogin("비밀번호가 맞지 않습니다.");
+      return;
+    }
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
     }
@@ -88,6 +110,17 @@ async function loadDeals({ manual = false } = {}) {
     setLoading(false);
     render();
   }
+}
+
+function showLogin(message = "") {
+  $("#loginScreen").classList.remove("hidden");
+  $("#loginError").textContent = message;
+  $("#passwordInput").focus();
+}
+
+function hideLogin() {
+  $("#loginScreen").classList.add("hidden");
+  $("#loginError").textContent = "";
 }
 
 function filteredDeals() {
@@ -270,6 +303,23 @@ $("#searchInput").addEventListener("input", (event) => {
 
 $("#refreshButton").addEventListener("click", () => {
   loadDeals({ manual: true });
+});
+
+$("#logoutButton").addEventListener("click", () => {
+  localStorage.removeItem(PASSWORD_KEY);
+  deals = [];
+  state.selectedId = "";
+  render();
+  showLogin();
+});
+
+$("#loginForm").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const password = $("#passwordInput").value.trim();
+  if (!password) return;
+  localStorage.setItem(PASSWORD_KEY, password);
+  hideLogin();
+  await loadDeals({ manual: true });
 });
 
 registerServiceWorker();

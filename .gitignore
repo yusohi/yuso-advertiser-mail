@@ -1,3 +1,4 @@
 bin/
 .tools/
 .DS_Store
+data.local.json

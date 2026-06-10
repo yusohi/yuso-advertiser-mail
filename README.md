@@ -1,14 +1,14 @@
 # 유소 광고주 메일 파이프라인
 
-유소채널(`yuso@wootso.com`)로 온 광고주 메일만 정리해서 보는 정적 웹앱입니다.
+유소채널(`yuso@wootso.com`)로 온 광고주 메일만 정리해서 보는 웹앱입니다.
+
+GitHub Pages에는 화면 코드만 배포하고, 실제 메일 데이터는 Supabase API에서 비밀번호가 맞을 때만 내려줍니다.
 
 ## 배포
 
-이 앱은 `index.html`, `styles.css`, `app.js`, `data.json`만 있으면 동작합니다. 고정 URL로 쓰려면 Render Static Site, GitHub Pages, Cloudflare Pages 같은 정적 호스팅에 올리면 됩니다.
+이 앱은 GitHub Pages에서 정적 화면으로 동작합니다. 메일 데이터는 저장소에 커밋하지 않습니다.
 
-Render를 쓰는 경우 이 저장소를 GitHub/GitLab/Bitbucket에 올린 뒤 `render.yaml` Blueprint로 배포하면 됩니다.
-
-주의: `data.json` 안에는 실제 메일 내용이 들어갑니다. 공개 저장소나 공개 URL에 올리면 링크를 아는 사람이 내용을 볼 수 있습니다.
+주의: 로컬 백업 파일인 `data.local.json`에는 실제 메일 내용이 들어가므로 Git에 올리지 않습니다.
 
 ## 휴대폰에서 앱처럼 쓰기
 

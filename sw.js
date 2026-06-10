@@ -1,4 +1,4 @@
-const CACHE_VERSION = "yuso-mail-v2026-06-10";
+const CACHE_VERSION = "yuso-mail-v2026-06-11-api";
 const APP_SHELL = ["./", "./index.html", "./styles.css", "./app.js", "./manifest.webmanifest", "./icon.svg"];
 
 self.addEventListener("install", (event) => {
@@ -17,19 +17,6 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("fetch", (event) => {
   const requestUrl = new URL(event.request.url);
-
-  if (requestUrl.pathname.endsWith("/data.json")) {
-    event.respondWith(
-      fetch(event.request)
-        .then((response) => {
-          const copy = response.clone();
-          caches.open(CACHE_VERSION).then((cache) => cache.put(event.request, copy));
-          return response;
-        })
-        .catch(() => caches.match(event.request)),
-    );
-    return;
-  }
 
   if (event.request.method !== "GET") return;
 
