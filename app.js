@@ -1,6 +1,7 @@
 let deals = [];
 
 const API_URL = "https://bsmfvlodkqyfawsppjno.supabase.co/functions/v1/yuso-mail/api/data";
+const CHANGE_PASSWORD_URL = "https://bsmfvlodkqyfawsppjno.supabase.co/functions/v1/yuso-mail/api/change-password";
 const PASSWORD_KEY = "yuso-mail-password";
 
 const state = {
@@ -121,6 +122,44 @@ function showLogin(message = "") {
 function hideLogin() {
   $("#loginScreen").classList.add("hidden");
   $("#loginError").textContent = "";
+}
+
+function openPasswordModal() {
+  const savedPassword = localStorage.getItem(PASSWORD_KEY) || "";
+  $("#passwordModal").classList.remove("hidden");
+  $("#passwordModal").setAttribute("aria-hidden", "false");
+  $("#changePasswordError").textContent = "";
+  $("#currentPasswordInput").value = savedPassword;
+  $("#newPasswordInput").value = "";
+  $("#confirmPasswordInput").value = "";
+  $("#currentPasswordInput").focus();
+}
+
+function closePasswordModal() {
+  $("#passwordModal").classList.add("hidden");
+  $("#passwordModal").setAttribute("aria-hidden", "true");
+  $("#changePasswordForm").reset();
+  $("#changePasswordError").textContent = "";
+}
+
+async function changePassword(currentPassword, newPassword) {
+  const response = await fetch(CHANGE_PASSWORD_URL, {
+    method: "POST",
+    cache: "no-store",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ currentPassword, newPassword }),
+  });
+  if (response.status === 401) {
+    throw new Error("현재 비밀번호가 맞지 않습니다.");
+  }
+  if (response.status === 400) {
+    throw new Error("새 비밀번호는 8자 이상이어야 합니다.");
+  }
+  if (!response.ok) {
+    throw new Error("비밀번호 변경에 실패했습니다.");
+  }
 }
 
 function filteredDeals() {
@@ -311,6 +350,46 @@ $("#logoutButton").addEventListener("click", () => {
   state.selectedId = "";
   render();
   showLogin();
+});
+
+$("#changePasswordButton").addEventListener("click", openPasswordModal);
+
+$("#cancelPasswordChange").addEventListener("click", closePasswordModal);
+
+$("#passwordModal").addEventListener("click", (event) => {
+  if (event.target === $("#passwordModal")) closePasswordModal();
+});
+
+$("#changePasswordForm").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const currentPassword = $("#currentPasswordInput").value.trim();
+  const newPassword = $("#newPasswordInput").value.trim();
+  const confirmPassword = $("#confirmPasswordInput").value.trim();
+  const error = $("#changePasswordError");
+
+  if (newPassword.length < 8) {
+    error.textContent = "새 비밀번호는 8자 이상이어야 합니다.";
+    return;
+  }
+  if (newPassword !== confirmPassword) {
+    error.textContent = "새 비밀번호 확인이 일치하지 않습니다.";
+    return;
+  }
+
+  const submitButton = event.submitter;
+  if (submitButton) submitButton.disabled = true;
+  error.textContent = "";
+  try {
+    await changePassword(currentPassword, newPassword);
+    localStorage.setItem(PASSWORD_KEY, newPassword);
+    closePasswordModal();
+    showToast("비밀번호를 변경했습니다.");
+    await loadDeals({ manual: true });
+  } catch (changeError) {
+    error.textContent = changeError.message;
+  } finally {
+    if (submitButton) submitButton.disabled = false;
+  }
 });
 
 $("#loginForm").addEventListener("submit", async (event) => {

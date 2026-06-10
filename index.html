@@ -44,6 +44,7 @@
         </div>
         <div class="control-actions">
           <button class="refresh-button" id="refreshButton" type="button">새로고침</button>
+          <button class="refresh-button" id="changePasswordButton" type="button">비밀번호 변경</button>
           <button class="refresh-button" id="logoutButton" type="button">로그아웃</button>
           <div class="segments" id="statusFilters" aria-label="상태 필터"></div>
         </div>
@@ -61,6 +62,31 @@
         <section class="detail" id="detail" aria-label="광고주 상세"></section>
       </section>
     </main>
+
+    <section class="modal-screen hidden" id="passwordModal" aria-hidden="true">
+      <form class="login-card" id="changePasswordForm">
+        <p class="eyebrow">Security</p>
+        <h1>비밀번호 변경</h1>
+        <label>
+          현재 비밀번호
+          <input id="currentPasswordInput" type="password" autocomplete="current-password" required />
+        </label>
+        <label>
+          새 비밀번호
+          <input id="newPasswordInput" type="password" autocomplete="new-password" minlength="8" required />
+        </label>
+        <label>
+          새 비밀번호 확인
+          <input id="confirmPasswordInput" type="password" autocomplete="new-password" minlength="8" required />
+        </label>
+        <div class="modal-actions">
+          <button type="button" class="secondary-button" id="cancelPasswordChange">취소</button>
+          <button type="submit">변경</button>
+        </div>
+        <p class="login-error" id="changePasswordError"></p>
+      </form>
+    </section>
+
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
     <script src="./app.js"></script>

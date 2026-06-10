@@ -36,7 +36,8 @@ button:disabled {
   opacity: 0.62;
 }
 
-.login-screen {
+.login-screen,
+.modal-screen {
   position: fixed;
   inset: 0;
   z-index: 10;
@@ -46,7 +47,13 @@ button:disabled {
   background: var(--bg);
 }
 
-.login-screen.hidden {
+.modal-screen {
+  z-index: 30;
+  background: rgba(23, 23, 23, 0.34);
+}
+
+.login-screen.hidden,
+.modal-screen.hidden {
   display: none;
 }
 
@@ -72,6 +79,7 @@ button:disabled {
 .login-card label {
   display: grid;
   gap: 8px;
+  margin-top: 12px;
   font-weight: 700;
 }
 
@@ -102,6 +110,23 @@ button:disabled {
   margin: 14px 0 0;
   color: var(--red);
   font-weight: 700;
+}
+
+.modal-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.login-card .modal-actions button {
+  margin-top: 0;
+}
+
+.login-card .secondary-button {
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--ink);
 }
 
 .app-shell {
