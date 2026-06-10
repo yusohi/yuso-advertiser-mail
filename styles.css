@@ -661,30 +661,108 @@ button:disabled {
 .timeline,
 .mail-thread {
   display: grid;
-  gap: 12px;
+  gap: 0;
 }
 
 .mail-message {
-  padding: 14px;
-  background: #fafafa;
-  border: 1px solid var(--line);
-  border-radius: 14px;
+  background: #fff;
+  border-top: 1px solid var(--line);
 }
 
-.mail-message-head {
+.mail-message:first-child {
+  border-top: 0;
+}
+
+.mail-message-summary {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) 28px;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 72px;
+  padding: 12px 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.mail-message-summary:hover {
+  background: #f8fafd;
+}
+
+.mail-avatar {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: #1a73e8;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.mail-message.from-me .mail-avatar {
+  background: #5e35b1;
+}
+
+.mail-message-main {
+  min-width: 0;
+}
+
+.mail-message-line {
   display: flex;
   justify-content: space-between;
-  gap: 12px;
+  gap: 14px;
+  min-width: 0;
   color: var(--muted);
   font-size: 13px;
 }
 
-.mail-message-head strong {
+.mail-message-line strong {
+  min-width: 0;
+  overflow: hidden;
   color: var(--ink);
+  font-size: 15px;
+  font-weight: 750;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mail-message-line span {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.mail-message-preview {
+  display: block;
+  margin-top: 4px;
+  overflow: hidden;
+  color: var(--muted);
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mail-toggle {
+  color: var(--muted);
+  font-size: 22px;
+  text-align: center;
+}
+
+.mail-message-body {
+  display: none;
+  padding: 0 40px 24px 56px;
+}
+
+.mail-message.expanded .mail-message-body {
+  display: block;
 }
 
 .mail-message p {
-  margin: 10px 0 0;
+  margin: 0;
   line-height: 1.55;
   white-space: pre-wrap;
 }
@@ -812,6 +890,26 @@ body.compact .dashboard {
 
   .grid {
     grid-template-columns: 1fr;
+  }
+
+  .mail-message-summary {
+    grid-template-columns: 38px minmax(0, 1fr) 24px;
+    gap: 10px;
+  }
+
+  .mail-avatar {
+    width: 36px;
+    height: 36px;
+    font-size: 13px;
+  }
+
+  .mail-message-line {
+    display: grid;
+    gap: 2px;
+  }
+
+  .mail-message-body {
+    padding: 0 6px 20px 48px;
   }
 
   .detail-head {

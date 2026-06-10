@@ -13,6 +13,7 @@ const state = {
   updatedAt: "불러오는 중",
   loading: false,
   lastError: "",
+  expandedMessages: new Set(),
 };
 
 const statusLabels = [
@@ -68,6 +69,34 @@ function escapeHtml(value = "") {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
+}
+
+function initials(value = "") {
+  const text = String(value || "").trim();
+  if (!text) return "?";
+  const emailMatch = text.match(/<([^>]+)>/);
+  const clean = text
+    .replace(/<[^>]+>/g, "")
+    .replace(/["']/g, "")
+    .trim();
+  const source = clean || emailMatch?.[1] || text;
+  if (/유소|yuso/i.test(source)) return "소정";
+  if (/[가-힣]/.test(source)) return source.slice(0, 2);
+  return source
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase();
+}
+
+function isSenderMe(value = "") {
+  return /유소|yuso@wootso\.com|yuso/i.test(String(value));
+}
+
+function messagePreview(body = "") {
+  return String(body).replace(/\s+/g, " ").trim().slice(0, 150);
 }
 
 async function loadDeals({ manual = false } = {}) {
@@ -280,6 +309,9 @@ function renderDetail() {
     return;
   }
   const messages = deal.messages || fallbackMessages(deal);
+  if (messages.length && !messages.some((_, index) => state.expandedMessages.has(`${deal.id}:${index}`))) {
+    state.expandedMessages.add(`${deal.id}:${messages.length - 1}`);
+  }
 
   $("#detail").innerHTML = `
     <div class="detail-head">
@@ -326,15 +358,29 @@ function renderDetail() {
         <div class="mail-thread">
           ${messages
             .map(
-              (message, index) => `
-                <article class="mail-message">
-                  <div class="mail-message-head">
-                    <strong>${index + 1}. ${escapeHtml(message.from)}</strong>
-                    <span>${escapeHtml(message.date)}</span>
+              (message, index) => {
+                const key = `${deal.id}:${index}`;
+                const expanded = state.expandedMessages.has(key);
+                const from = message.from || "알 수 없음";
+                return `
+                <article class="mail-message ${expanded ? "expanded" : "collapsed"} ${isSenderMe(from) ? "from-me" : ""}">
+                  <button class="mail-message-summary" data-message-key="${escapeAttr(key)}" type="button" aria-expanded="${expanded}">
+                    <span class="mail-avatar">${escapeHtml(initials(from))}</span>
+                    <span class="mail-message-main">
+                      <span class="mail-message-line">
+                        <strong>${escapeHtml(from)}</strong>
+                        <span>${escapeHtml(message.date)}</span>
+                      </span>
+                      <span class="mail-message-preview">${escapeHtml(messagePreview(message.body))}</span>
+                    </span>
+                    <span class="mail-toggle" aria-hidden="true">${expanded ? "⌃" : "⌄"}</span>
+                  </button>
+                  <div class="mail-message-body">
+                    <p>${escapeHtml(message.body)}</p>
                   </div>
-                  <p>${escapeHtml(message.body)}</p>
                 </article>
-              `,
+              `;
+              },
             )
             .join("")}
         </div>
@@ -421,6 +467,17 @@ document.addEventListener("click", (event) => {
       thread.scrollIntoView({ behavior: "smooth", block: "start" });
       showToast("이전 대화까지 포함한 전체 원문으로 이동했습니다.");
     }
+  }
+
+  const messageButton = event.target.closest("[data-message-key]");
+  if (messageButton) {
+    const key = messageButton.dataset.messageKey;
+    if (state.expandedMessages.has(key)) {
+      state.expandedMessages.delete(key);
+    } else {
+      state.expandedMessages.add(key);
+    }
+    renderDetail();
   }
 });
 
