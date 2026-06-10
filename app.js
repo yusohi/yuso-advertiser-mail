@@ -57,7 +57,7 @@ function setLoading(isLoading) {
 function updateSyncStatus() {
   const status = $("#syncStatus");
   if (!status) return;
-  const suffix = state.lastError ? ` · ${state.lastError}` : " · 1분마다 최신 스냅샷 확인";
+  const suffix = state.lastError ? ` · ${state.lastError}` : " · Gmail 자동 동기화 1시간마다 · 화면은 1분마다 확인";
   status.textContent = `유소채널 메일함 · ${state.updatedAt}${suffix}`;
 }
 
