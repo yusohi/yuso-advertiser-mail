@@ -777,6 +777,44 @@ button:disabled {
   white-space: pre-wrap;
 }
 
+.quoted-mail {
+  margin-top: 18px;
+}
+
+.quote-toggle {
+  display: inline-grid;
+  place-items: center;
+  min-width: 42px;
+  height: 24px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 999px;
+  background: #c2c7ce;
+  color: #2b2f33;
+  font-size: 18px;
+  font-weight: 900;
+  letter-spacing: 2px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.quote-toggle:hover,
+.quote-toggle:focus {
+  background: #aeb4bc;
+  outline: 0;
+}
+
+.quoted-mail-body {
+  display: none;
+  margin-top: 22px;
+  padding-left: 16px;
+  border-left: 2px solid #d0d5dd;
+}
+
+.quoted-mail.expanded .quoted-mail-body {
+  display: block;
+}
+
 .event {
   display: grid;
   grid-template-columns: 116px 1fr;

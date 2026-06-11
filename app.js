@@ -18,6 +18,7 @@ const state = {
   loading: false,
   lastError: "",
   expandedMessages: new Set(),
+  expandedQuotes: new Set(),
   gmailConfigured: false,
   gmailConnected: false,
 };
@@ -104,6 +105,43 @@ function isSenderMe(value = "") {
 
 function messagePreview(body = "") {
   return String(body).replace(/\s+/g, " ").trim().slice(0, 150);
+}
+
+function quotedBodyIndex(body = "") {
+  const text = String(body || "").replace(/\r\n/g, "\n");
+  const patterns = [
+    /\n\s*\d{4}년\s+\d{1,2}월\s+\d{1,2}일[\s\S]{0,160}?님이 작성:/,
+    /\n\s*On\s.+?wrote:/i,
+    /\n\s*-{2,}\s*Forwarded message\s*-{2,}/i,
+    /\n\s*보낸 사람\s*:/,
+    /\n\s*From\s*:/i,
+  ];
+  const indexes = patterns.map((pattern) => {
+    const match = text.match(pattern);
+    return match ? match.index : -1;
+  }).filter((index) => index >= 0);
+  const quotedLineIndex = text.search(/\n\s*>/);
+  if (quotedLineIndex >= 0) indexes.push(quotedLineIndex);
+  return indexes.length ? Math.min(...indexes) : -1;
+}
+
+function renderMailBody(body = "", quoteKey = "") {
+  const text = String(body || "");
+  const index = quotedBodyIndex(text);
+  if (index < 0) return `<p>${escapeHtml(text)}</p>`;
+
+  const current = text.slice(0, index).trim();
+  const quoted = text.slice(index).trim();
+  const expanded = state.expandedQuotes.has(quoteKey);
+  return `
+    ${current ? `<p>${escapeHtml(current)}</p>` : ""}
+    <div class="quoted-mail ${expanded ? "expanded" : ""}">
+      <button class="quote-toggle" data-quote-key="${escapeAttr(quoteKey)}" type="button" aria-expanded="${expanded}" aria-label="이전 대화 ${expanded ? "접기" : "열기"}">•••</button>
+      <div class="quoted-mail-body">
+        <p>${escapeHtml(quoted)}</p>
+      </div>
+    </div>
+  `;
 }
 
 async function loadDeals({ manual = false } = {}) {
@@ -497,7 +535,7 @@ function renderDetail() {
                     <span class="mail-toggle" aria-hidden="true">${expanded ? "⌃" : "⌄"}</span>
                   </button>
                   <div class="mail-message-body">
-                    <p>${escapeHtml(message.body)}</p>
+                    ${renderMailBody(message.body, `${key}:quote`)}
                   </div>
                 </article>
               `;
@@ -597,6 +635,18 @@ document.addEventListener("click", (event) => {
       state.expandedMessages.delete(key);
     } else {
       state.expandedMessages.add(key);
+    }
+    renderDetail();
+    return;
+  }
+
+  const quoteButton = event.target.closest("[data-quote-key]");
+  if (quoteButton) {
+    const key = quoteButton.dataset.quoteKey;
+    if (state.expandedQuotes.has(key)) {
+      state.expandedQuotes.delete(key);
+    } else {
+      state.expandedQuotes.add(key);
     }
     renderDetail();
   }
