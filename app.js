@@ -107,38 +107,85 @@ function messagePreview(body = "") {
   return String(body).replace(/\s+/g, " ").trim().slice(0, 150);
 }
 
-function quotedBodyIndex(body = "") {
+function cleanMailText(body = "") {
+  return String(body || "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\u00a0/g, " ")
+    .replace(/[ \t]+$/gm, "")
+    .replace(/\n{4,}/g, "\n\n\n")
+    .trim();
+}
+
+function splitQuotedBody(body = "") {
   const text = String(body || "").replace(/\r\n/g, "\n");
   const patterns = [
-    /\n\s*\d{4}년\s+\d{1,2}월\s+\d{1,2}일[\s\S]{0,160}?님이 작성:/,
-    /\n\s*On\s.+?wrote:/i,
-    /\n\s*-{2,}\s*Forwarded message\s*-{2,}/i,
-    /\n\s*보낸 사람\s*:/,
-    /\n\s*From\s*:/i,
+    /(^|\n)\s*\d{4}년\s+\d{1,2}월\s+\d{1,2}일[\s\S]{0,180}?님이 작성:\s*/,
+    /(^|\n)\s*On\s.+?wrote:\s*/i,
+    /(^|\n)\s*-{2,}\s*Forwarded message\s*-{2,}\s*/i,
+    /(^|\n)\s*보낸 사람\s*:\s*/,
+    /(^|\n)\s*From\s*:\s*/i,
   ];
-  const indexes = patterns.map((pattern) => {
-    const match = text.match(pattern);
-    return match ? match.index : -1;
-  }).filter((index) => index >= 0);
-  const quotedLineIndex = text.search(/\n\s*>/);
-  if (quotedLineIndex >= 0) indexes.push(quotedLineIndex);
-  return indexes.length ? Math.min(...indexes) : -1;
+
+  let best = null;
+  for (const pattern of patterns) {
+    const match = pattern.exec(text);
+    if (!match) continue;
+    const index = match.index + (match[1] ? match[1].length : 0);
+    if (index < 24) continue;
+    if (!best || index < best.index) {
+      best = { index, end: pattern.lastIndex || index + match[0].length, intro: match[0].trim() };
+    }
+  }
+
+  const quotedLineIndex = text.search(/(^|\n)\s*>/);
+  if (quotedLineIndex >= 24 && (!best || quotedLineIndex < best.index)) {
+    return {
+      current: text.slice(0, quotedLineIndex).trim(),
+      intro: "",
+      quoted: text.slice(quotedLineIndex).trim(),
+    };
+  }
+
+  if (!best) return { current: text.trim(), intro: "", quoted: "" };
+  return {
+    current: text.slice(0, best.index).trim(),
+    intro: best.intro,
+    quoted: text.slice(best.end).trim(),
+  };
+}
+
+function normalizeVisibleMailText(body = "") {
+  return cleanMailText(body)
+    .split("\n")
+    .map((line) => line.replace(/^>\s?/, ""))
+    .filter((line) => !/^\s*[-–—]\s*$/.test(line))
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function formatMailText(body = "") {
+  const text = normalizeVisibleMailText(body);
+  if (!text) return "";
+  const html = escapeHtml(text)
+    .replace(/^\*([^*\n:]{1,24})\*:\s*/gm, "<strong>$1:</strong> ")
+    .replace(/^\*\s*([^*\n:]{1,24})\s*:\s*\*/gm, "<strong>$1:</strong>")
+    .replace(/^[-•]\s+/gm, "• ");
+  return `<p>${html}</p>`;
 }
 
 function renderMailBody(body = "", quoteKey = "") {
-  const text = String(body || "");
-  const index = quotedBodyIndex(text);
-  if (index < 0) return `<p>${escapeHtml(text)}</p>`;
+  const { current, intro, quoted } = splitQuotedBody(cleanMailText(body));
+  if (!quoted) return formatMailText(current);
 
-  const current = text.slice(0, index).trim();
-  const quoted = text.slice(index).trim();
   const expanded = state.expandedQuotes.has(quoteKey);
   return `
-    ${current ? `<p>${escapeHtml(current)}</p>` : ""}
+    ${formatMailText(current)}
     <div class="quoted-mail ${expanded ? "expanded" : ""}">
+      ${intro ? `<p class="quote-intro">${escapeHtml(intro)}</p>` : ""}
       <button class="quote-toggle" data-quote-key="${escapeAttr(quoteKey)}" type="button" aria-expanded="${expanded}" aria-label="이전 대화 ${expanded ? "접기" : "열기"}">•••</button>
       <div class="quoted-mail-body">
-        <p>${escapeHtml(quoted)}</p>
+        ${formatMailText(quoted)}
       </div>
     </div>
   `;
