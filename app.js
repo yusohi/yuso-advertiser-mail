@@ -527,8 +527,114 @@ function cleanTimelineText(value = "") {
     .trim() || "대화";
 }
 
+function senderName(value = "") {
+  return String(value || "담당자")
+    .replace(/<.*?>/g, "")
+    .replace(/["']/g, "")
+    .replace(/\s+/g, " ")
+    .trim() || "담당자";
+}
+
+function currentMessageText(message) {
+  return normalizeVisibleMailText(splitQuotedBody(cleanMailText(message?.body || "")).current || message?.body || "");
+}
+
+function messageSnippet(body = "", length = 86) {
+  return normalizeVisibleMailText(body)
+    .replace(/https?:\/\/\S+/g, "")
+    .replace(/\[[^\]]+\]/g, "")
+    .replace(/[*_`]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, length);
+}
+
+function uniqueItems(items, limit = 6) {
+  const seen = new Set();
+  return items
+    .map((item) => String(item || "").trim())
+    .filter((item) => {
+      const key = item.toLowerCase();
+      if (!item || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, limit);
+}
+
+function extractConditions(text = "") {
+  const clean = normalizeVisibleMailText(text);
+  const lines = clean.split("\n").map((line) => line.trim()).filter(Boolean);
+  const money = clean.match(/(?:\d{1,3}(?:,\d{3})*|\d+)\s*(?:만\s*)?원|VAT|부가세|페이백|현금|광고비|비용/g) || [];
+  const dates = clean.match(/\d{1,2}\s*월\s*\d{1,2}\s*일|\d{4}[.\-]\s*\d{1,2}[.\-]\s*\d{1,2}|이번\s*주|다음\s*주|금주|내일|오늘|일정|마감|촬영/g) || [];
+  const deliverables = lines.filter((line) => /(릴스|쇼츠|피드|스토리|블로그|영상|콘텐츠|PPL|공동구매|체험단|가이드|링크|성과|제작|촬영)/i.test(line));
+  const products = lines.filter((line) => /(제품|치약|칫솔|림핏|엔지|쿼드|키토|세트|무상|제공|배송|주소)/i.test(line));
+
+  return uniqueItems([
+    ...money.filter((item) => !/^(비용|광고비)$/.test(item)).map((item) => `비용/정산: ${item}`),
+    ...dates.map((item) => `일정: ${item}`),
+    ...deliverables.map((item) => `진행: ${item.replace(/^[-•✔\s]+/, "")}`),
+    ...products.map((item) => `제품/배송: ${item.replace(/^[-•✔\s]+/, "")}`),
+  ], 8);
+}
+
+function inferNeed(text = "") {
+  const clean = normalizeVisibleMailText(text);
+  if (/주소|배송지|수령|연락처|성함/.test(clean)) return "배송지/연락처 정보를 확인해서 보내기";
+  if (/일정|가능|확인|마감|촬영|업로드|진행/.test(clean)) return "가능 일정과 진행 여부를 답장하기";
+  if (/비용|광고비|단가|견적|페이백|현금|VAT|무상/.test(clean)) return "조건이 맞는지 보고 비용/진행 방식 협의하기";
+  if (/가이드|계약|링크|성과|코드/.test(clean)) return "가이드와 진행 조건을 확인하고 필요한 자료 요청하기";
+  return "제안 내용을 검토하고 진행 여부를 답장하기";
+}
+
+function buildDealInsight(deal, messages) {
+  const usableMessages = messages.filter((message) => currentMessageText(message));
+  const latest = usableMessages[usableMessages.length - 1] || {};
+  const latestExternal = [...usableMessages].reverse().find((message) => !isSenderMe(message.from)) || latest;
+  const latestMine = [...usableMessages].reverse().find((message) => isSenderMe(message.from));
+  const latestText = currentMessageText(latest);
+  const latestExternalText = currentMessageText(latestExternal);
+  const allText = usableMessages.map(currentMessageText).join("\n\n");
+  const lastFromMe = latest.from && isSenderMe(latest.from);
+  const conditions = extractConditions(allText);
+  const latestSender = senderName(latestExternal.from);
+  const latestSummary = messageSnippet(latestExternalText || latestText, 150);
+  const need = lastFromMe ? "상대 답장을 기다리는 상태" : inferNeed(latestExternalText || latestText);
+  const progress = lastFromMe
+    ? `내가 ${compactTimelineDate(latest.date)}에 답장을 보냈고, 현재는 ${latestSender}의 회신을 기다리는 중입니다.`
+    : `${latestSender}가 마지막으로 보낸 메일 기준으로 ${need}가 필요합니다.`;
+  const conversation = uniqueItems([
+    usableMessages[0] ? `처음 제안: ${messageSnippet(currentMessageText(usableMessages[0]), 120)}` : "",
+    latestMine ? `내가 보낸 최근 답장: ${messageSnippet(currentMessageText(latestMine), 120)}` : "",
+    latestExternal ? `상대의 최근 요청/제안: ${latestSummary}` : "",
+  ], 4);
+  const nextSteps = lastFromMe
+    ? ["새 회신이 오면 조건 변경 여부를 확인하기", "급한 건이면 2-3일 뒤 가볍게 리마인드하기"]
+    : uniqueItems([
+        need,
+        /비용|광고비|단가|페이백|무상/.test(latestExternalText) ? "무상/성과형이면 고정 광고비 가능 여부를 협의하기" : "",
+        /주소|배송지|연락처/.test(latestExternalText) ? "보내도 되는 배송 정보만 정리해서 전달하기" : "",
+        "답장 전 원문에서 누락된 조건이 없는지 확인하기",
+      ], 4);
+  const draft = lastFromMe
+    ? `안녕하세요, ${latestSender}님.\n\n이전 메일 확인 부탁드립니다. 추가로 필요한 내용이 있으면 편하게 말씀 주세요.\n\n감사합니다.\n유소정 드림`
+    : `안녕하세요, ${latestSender}님.\n\n제안 주신 내용 확인했습니다. ${need.replace(/기$/, "겠습니다")}.\n\n진행 전 아래 내용만 한 번 더 확인 부탁드립니다.\n- 진행 방식/콘텐츠 형태\n- 일정 및 업로드 마감\n- 제공 제품과 비용 조건\n\n확인해주시면 검토 후 답장드리겠습니다.\n\n감사합니다.\n유소정 드림`;
+
+  return {
+    progress,
+    conversation,
+    nextSteps,
+    conditions: conditions.length ? conditions : uniqueItems(deal.highlights || [], 5),
+    draft,
+    latestSummary,
+  };
+}
+
 function renderTimeline(deal) {
-  const timeline = Array.isArray(deal.timeline) ? deal.timeline : [];
+  const messages = Array.isArray(deal.messages) ? deal.messages : [];
+  const timeline = messages.length
+    ? messages.map((message) => [message.date, `${senderName(message.from)} · ${messageSnippet(currentMessageText(message), 80)}`])
+    : Array.isArray(deal.timeline) ? deal.timeline : [];
   if (!timeline.length) {
     return `<p class="muted">아직 기록된 흐름이 없습니다.</p>`;
   }
@@ -569,6 +675,7 @@ function renderDetail() {
   if (messages.length && !messages.some((_, index) => state.expandedMessages.has(`${deal.id}:${index}`))) {
     state.expandedMessages.add(`${deal.id}:${messages.length - 1}`);
   }
+  const insight = buildDealInsight(deal, messages);
 
   $("#detail").innerHTML = `
     <div class="detail-head">
@@ -585,26 +692,30 @@ function renderDetail() {
     </div>
 
     <div class="grid">
-      <section class="section">
+      <section class="section insight-card">
         <h3>현재 어디까지 왔는지</h3>
-        <p>${deal.oneLine}</p>
-        <p class="muted">마감/일정: ${deal.deadline}</p>
+        <p class="lead-text">${escapeHtml(insight.progress)}</p>
+        <p class="muted">${escapeHtml(insight.latestSummary || deal.oneLine || "")}</p>
+      </section>
+      <section class="section action-card">
+        <h3>다음 액션</h3>
+        <ol class="action-list">${insight.nextSteps.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ol>
       </section>
       <section class="section">
-        <h3>다음 액션</h3>
-        <p>${deal.nextAction}</p>
+        <h3>짧은 대화 요약</h3>
+        <ul class="summary-list">${insight.conversation.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
       </section>
       <section class="section">
         <h3>핵심 조건</h3>
-        <ul>${deal.highlights.map((item) => `<li>${item}</li>`).join("")}</ul>
+        <div class="condition-list">${insight.conditions.map((item) => `<span>${escapeHtml(item)}</span>`).join("")}</div>
       </section>
-      <section class="section">
+      <section class="section" style="grid-column: 1 / -1;">
         <h3>대화 흐름</h3>
         ${renderTimeline(deal)}
       </section>
       <section class="section" style="grid-column: 1 / -1;">
         <h3>다음 메일 초안</h3>
-        <div class="draft">${deal.draft}</div>
+        <div class="draft">${escapeHtml(insight.draft)}</div>
       </section>
       <section class="section" id="mailThreadSection" style="grid-column: 1 / -1;">
         <h3>저장된 메일 원문 <span class="section-count">${messages.length}개</span></h3>
