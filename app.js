@@ -508,6 +508,57 @@ function renderList() {
     .join("");
 }
 
+function compactTimelineDate(value = "") {
+  const text = String(value || "").trim();
+  const match = text.match(/(\d{4})\.\s*(\d{1,2})\.\s*(\d{1,2})\.\s*(\d{1,2})시\s*(\d{1,2})분/);
+  if (match) {
+    const hour = match[4].padStart(2, "0");
+    const minute = match[5].padStart(2, "0");
+    return `${match[2]}.${match[3]} ${hour}:${minute}`;
+  }
+  return text.replace(/(\d{4})년\s*/, "").replace(/\s+/g, " ").slice(0, 18);
+}
+
+function cleanTimelineText(value = "") {
+  return String(value || "")
+    .replace(/[<>]/g, "")
+    .replace(/"/g, "")
+    .replace(/\s+/g, " ")
+    .trim() || "대화";
+}
+
+function renderTimeline(deal) {
+  const timeline = Array.isArray(deal.timeline) ? deal.timeline : [];
+  if (!timeline.length) {
+    return `<p class="muted">아직 기록된 흐름이 없습니다.</p>`;
+  }
+
+  const renderItems = (items) => items
+    .map(([date, text]) => `
+      <div class="event">
+        <time>${escapeHtml(compactTimelineDate(date))}</time>
+        <span>${escapeHtml(cleanTimelineText(text))}</span>
+      </div>
+    `)
+    .join("");
+
+  const recent = timeline.slice(-6);
+  const older = timeline.slice(0, -6);
+  return `
+    <div class="timeline-clean">
+      ${renderItems(recent)}
+    </div>
+    ${
+      older.length
+        ? `<details class="timeline-more">
+            <summary>이전 흐름 ${older.length}개 보기</summary>
+            <div class="timeline-scroll">${renderItems(older)}</div>
+          </details>`
+        : ""
+    }
+  `;
+}
+
 function renderDetail() {
   const deal = deals.find((item) => item.id === state.selectedId) || filteredDeals()[0];
   if (!deal) {
@@ -549,11 +600,7 @@ function renderDetail() {
       </section>
       <section class="section">
         <h3>대화 흐름</h3>
-        <div class="timeline">
-          ${deal.timeline
-            .map(([date, text]) => `<div class="event"><strong>${date}</strong><span>${text}</span></div>`)
-            .join("")}
-        </div>
+        ${renderTimeline(deal)}
       </section>
       <section class="section" style="grid-column: 1 / -1;">
         <h3>다음 메일 초안</h3>
