@@ -766,9 +766,12 @@ function registerServiceWorker() {
   if (!window.location.protocol.startsWith("http")) return;
 
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("./sw.js").catch(() => {
-      // The app still works without offline caching.
-    });
+    navigator.serviceWorker
+      .register(`./sw.js?v=${Date.now()}`)
+      .then((registration) => registration.update())
+      .catch(() => {
+        // The app still works without offline caching.
+      });
   });
 }
 
