@@ -718,36 +718,38 @@ function renderDetail() {
         <div class="draft">${escapeHtml(insight.draft)}</div>
       </section>
       <section class="section" id="mailThreadSection" style="grid-column: 1 / -1;">
-        <h3>저장된 메일 원문 <span class="section-count">${messages.length}개</span></h3>
-        <div class="mail-thread">
-          ${messages
-            .map(
-              (message, index) => {
-                const key = `${deal.id}:${index}`;
-                const expanded = state.expandedMessages.has(key);
-                const from = message.from || "알 수 없음";
-                return `
-                <article class="mail-message ${expanded ? "expanded" : "collapsed"} ${isSenderMe(from) ? "from-me" : ""}">
-                  <button class="mail-message-summary" data-message-key="${escapeAttr(key)}" type="button" aria-expanded="${expanded}">
-                    <span class="mail-avatar">${escapeHtml(initials(from))}</span>
-                    <span class="mail-message-main">
-                      <span class="mail-message-line">
-                        <strong>${escapeHtml(from)}</strong>
-                        <span>${escapeHtml(message.date)}</span>
+        <details class="raw-mail-details">
+          <summary>전체 원문 보기 <span class="section-count">${messages.length}개</span></summary>
+          <div class="mail-thread">
+            ${messages
+              .map(
+                (message, index) => {
+                  const key = `${deal.id}:${index}`;
+                  const expanded = state.expandedMessages.has(key);
+                  const from = message.from || "알 수 없음";
+                  return `
+                  <article class="mail-message ${expanded ? "expanded" : "collapsed"} ${isSenderMe(from) ? "from-me" : ""}">
+                    <button class="mail-message-summary" data-message-key="${escapeAttr(key)}" type="button" aria-expanded="${expanded}">
+                      <span class="mail-avatar">${escapeHtml(initials(from))}</span>
+                      <span class="mail-message-main">
+                        <span class="mail-message-line">
+                          <strong>${escapeHtml(from)}</strong>
+                          <span>${escapeHtml(message.date)}</span>
+                        </span>
+                        <span class="mail-message-preview">${escapeHtml(messagePreview(message.body))}</span>
                       </span>
-                      <span class="mail-message-preview">${escapeHtml(messagePreview(message.body))}</span>
-                    </span>
-                    <span class="mail-toggle" aria-hidden="true">${expanded ? "⌃" : "⌄"}</span>
-                  </button>
-                  <div class="mail-message-body">
-                    ${renderMailBody(message.body, `${key}:quote`)}
-                  </div>
-                </article>
-              `;
-              },
-            )
-            .join("")}
-        </div>
+                      <span class="mail-toggle" aria-hidden="true">${expanded ? "⌃" : "⌄"}</span>
+                    </button>
+                    <div class="mail-message-body">
+                      ${renderMailBody(message.body, `${key}:quote`)}
+                    </div>
+                  </article>
+                `;
+                },
+              )
+              .join("")}
+          </div>
+        </details>
       </section>
     </div>
   `;

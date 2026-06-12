@@ -967,6 +967,31 @@ button:disabled {
   grid-template-columns: 88px minmax(0, 1fr);
 }
 
+.raw-mail-details summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 42px;
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.raw-mail-details summary::marker {
+  content: "";
+}
+
+.raw-mail-details summary::after {
+  content: "⌄";
+  color: var(--muted);
+  font-size: 20px;
+}
+
+.raw-mail-details[open] summary::after {
+  content: "⌃";
+}
+
 .toast {
   position: fixed;
   left: 50%;
@@ -1036,9 +1061,29 @@ body.compact .dashboard {
   }
 
   .appbar {
-    grid-template-columns: auto 1fr auto;
-    gap: 10px;
-    padding: 10px;
+    position: sticky;
+    top: 0;
+    z-index: 15;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 8px;
+    min-height: 58px;
+    padding: 8px 10px;
+    background: var(--bg);
+  }
+
+  .brand-area {
+    gap: 6px;
+  }
+
+  .brand-mark {
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+    font-size: 14px;
+  }
+
+  #layoutToggle {
+    display: none;
   }
 
   .brand-area h1 {
@@ -1046,14 +1091,41 @@ body.compact .dashboard {
   }
 
   .search-wrap {
-    height: 46px;
+    height: 42px;
+    min-width: 0;
     padding: 0 12px;
+    border-radius: 21px;
+  }
+
+  .search-wrap span {
+    font-size: 22px;
+  }
+
+  .search-wrap input {
+    font-size: 15px;
+  }
+
+  .app-actions {
+    gap: 2px;
+  }
+
+  .icon-button {
+    width: 40px;
+    height: 40px;
+    font-size: 22px;
+  }
+
+  .profile-button {
+    width: 38px;
+    height: 38px;
+    font-size: 13px;
+    box-shadow: none;
   }
 
   .workspace,
   body.compact .workspace {
     grid-template-columns: 1fr;
-    padding: 0 10px 10px;
+    padding: 0;
   }
 
   .sidebar {
@@ -1061,7 +1133,24 @@ body.compact .dashboard {
   }
 
   .mail-surface {
-    border-radius: 18px;
+    overflow: visible;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .mail-toolbar {
+    min-height: 48px;
+    padding: 8px 14px;
+    background: #fff;
+  }
+
+  .mail-toolbar .eyebrow,
+  #resultCount {
+    display: none;
+  }
+
+  .mail-toolbar strong {
+    font-size: 16px;
   }
 
   .dashboard,
@@ -1071,18 +1160,163 @@ body.compact .dashboard {
   }
 
   .deal-list {
-    max-height: 44vh;
+    max-height: 34vh;
     border-right: 0;
+    border-bottom: 1px solid var(--line);
+    background: #fff;
+  }
+
+  .deal-row {
+    grid-template-columns: 1fr 38px;
+  }
+
+  .deal-button {
+    padding: 12px 10px 11px 14px;
+  }
+
+  .deal-title {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+  }
+
+  .deal-title strong {
+    font-size: 15px;
+  }
+
+  .deal-title .badge {
+    width: fit-content;
+    min-height: 21px;
+    font-size: 11px;
+  }
+
+  .deal-meta {
+    font-size: 12px;
+  }
+
+  .delete-deal {
+    width: 38px;
+    font-size: 20px;
+  }
+
+  .detail {
+    padding: 0;
+    overflow: visible;
+    background: #fff;
+  }
+
+  .detail-head {
+    position: sticky;
+    top: 58px;
+    z-index: 10;
+    gap: 8px;
+    padding: 14px 16px;
+    background: #fff;
     border-bottom: 1px solid var(--line);
   }
 
+  .detail h2 {
+    margin: 6px 0 4px;
+    font-size: 22px;
+  }
+
+  .detail-head .muted:nth-of-type(2),
+  .amount {
+    display: none;
+  }
+
+  .link-actions {
+    justify-content: flex-start;
+  }
+
+  .gmail-link {
+    min-height: 34px;
+    padding: 0 12px;
+    font-size: 13px;
+  }
+
   .grid {
-    grid-template-columns: 1fr;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 0;
+    padding: 12px;
+    background: #f6f8fc;
+  }
+
+  .section {
+    padding: 14px;
+    border-color: #e7ebf2;
+    border-radius: 14px;
+    box-shadow: 0 1px 2px rgba(60, 64, 67, 0.06);
+  }
+
+  .section h3 {
+    margin-bottom: 8px;
+    font-size: 14px;
+  }
+
+  .action-card {
+    order: 1;
+  }
+
+  .insight-card {
+    order: 2;
+  }
+
+  .grid .section:nth-child(3) {
+    order: 3;
+  }
+
+  .grid .section:nth-child(6) {
+    order: 4;
+  }
+
+  .grid .section:nth-child(4) {
+    order: 5;
+  }
+
+  .grid .section:nth-child(5) {
+    order: 6;
+  }
+
+  #mailThreadSection {
+    order: 7;
+  }
+
+  .lead-text {
+    font-size: 15px;
+  }
+
+  .action-list,
+  .summary-list {
+    padding-left: 18px;
+  }
+
+  .summary-list li,
+  .action-list li {
+    margin: 6px 0;
+    font-size: 14px;
+  }
+
+  .condition-list {
+    max-height: 96px;
+  }
+
+  .condition-list span {
+    font-size: 12px;
+  }
+
+  .draft {
+    max-height: 180px;
+    padding: 12px;
+    font-size: 14px;
   }
 
   .mail-message-summary {
     grid-template-columns: 38px minmax(0, 1fr) 24px;
     gap: 10px;
+    min-height: 64px;
+    padding: 10px 0;
   }
 
   .mail-avatar {
@@ -1096,12 +1330,42 @@ body.compact .dashboard {
     gap: 2px;
   }
 
+  .mail-message-line strong {
+    font-size: 14px;
+  }
+
+  .mail-message-line span,
+  .mail-message-preview {
+    font-size: 12px;
+  }
+
   .mail-message-body {
     padding: 0 6px 20px 48px;
   }
 
-  .detail-head {
-    flex-direction: column;
-    align-items: stretch;
+  .mail-message p {
+    font-size: 14px;
+    line-height: 1.65;
+  }
+
+  .event {
+    grid-template-columns: 70px minmax(0, 1fr);
+    gap: 8px;
+  }
+
+  .timeline-scroll {
+    max-height: 150px;
+  }
+
+  .raw-mail-details summary {
+    min-height: 34px;
+    font-size: 14px;
+  }
+
+  .account-panel {
+    position: fixed;
+    top: 58px;
+    right: 10px;
+    width: min(320px, calc(100vw - 20px));
   }
 }
