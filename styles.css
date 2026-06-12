@@ -1246,6 +1246,7 @@ body.compact .dashboard {
   }
 
   .sidebar-section {
+    display: block;
     margin: 24px 0 0;
   }
 
@@ -1254,10 +1255,26 @@ body.compact .dashboard {
   }
 
   #statusFilters button {
+    justify-content: space-between;
     min-height: 48px;
     padding: 0 14px;
     border-radius: 0 24px 24px 0;
     font-size: 17px;
+  }
+
+  body.compact #statusFilters button {
+    justify-content: space-between;
+    padding: 0 14px;
+    font-size: 17px;
+  }
+
+  body.compact #statusFilters button span {
+    font-size: 17px;
+  }
+
+  body.compact #statusFilters button::before {
+    margin-right: 12px;
+    font-size: 14px;
   }
 
   #statusFilters button strong {
