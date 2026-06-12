@@ -100,6 +100,26 @@ function initials(value = "") {
     .toUpperCase();
 }
 
+function emailFromValue(value = "") {
+  const text = String(value || "");
+  return text.match(/<([^>]+)>/)?.[1] || text.match(/[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}/)?.[0] || "";
+}
+
+function domainFromEmail(value = "") {
+  const email = emailFromValue(value).toLowerCase();
+  return email.includes("@") ? email.split("@").pop() : "";
+}
+
+function avatarMarkup(label = "", email = "") {
+  const domain = domainFromEmail(email);
+  const text = escapeHtml(initials(label || email));
+  if (domain && !/(gmail|googlemail)\.com$/.test(domain)) {
+    const src = `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=96`;
+    return `<span class="deal-avatar has-logo"><img src="${src}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove(); this.parentElement.classList.remove('has-logo')" /><span>${text}</span></span>`;
+  }
+  return `<span class="deal-avatar"><span>${text}</span></span>`;
+}
+
 function isSenderMe(value = "") {
   return /유소|yuso@wootso\.com|yuso/i.test(String(value));
 }
@@ -269,6 +289,7 @@ async function loadDeals({ manual = false } = {}) {
     deals = payload.deals;
     state.updatedAt = payload.updatedAt || new Date().toLocaleString("ko-KR");
     state.lastError = "";
+    hideLogin();
     if (!deals.some((deal) => deal.id === state.selectedId)) {
       state.selectedId = deals[0]?.id || "";
     }
@@ -557,7 +578,7 @@ function renderList() {
       (deal) => `
       <div class="deal-row ${state.selectedId === deal.id ? "active" : ""}">
         <button class="deal-button" data-id="${escapeAttr(deal.id)}" type="button">
-          <span class="deal-avatar">${escapeHtml(initials(deal.advertiser || deal.contact))}</span>
+          ${avatarMarkup(deal.advertiser || deal.contact, deal.email || deal.contact)}
           <span class="deal-content">
             <span class="deal-title">
               <strong>${escapeHtml(deal.advertiser)}</strong>
@@ -798,7 +819,7 @@ function renderDetail() {
                   return `
                   <article class="mail-message ${expanded ? "expanded" : "collapsed"} ${isSenderMe(from) ? "from-me" : ""}">
                     <button class="mail-message-summary" data-message-key="${escapeAttr(key)}" type="button" aria-expanded="${expanded}">
-                      <span class="mail-avatar">${escapeHtml(initials(from))}</span>
+                      ${avatarMarkup(from, from).replace("deal-avatar", "mail-avatar")}
                       <span class="mail-message-main">
                         <span class="mail-message-line">
                           <strong>${escapeHtml(from)}</strong>
