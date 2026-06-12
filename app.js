@@ -25,11 +25,11 @@ const state = {
 };
 
 const statusLabels = [
+  ["all", "전체"],
+  ["reply", "내 답장 필요"],
   ["priority", "중요도순"],
   ["urgent", "빨리 답장"],
   ["soon", "오늘 확인"],
-  ["all", "전체"],
-  ["reply", "내 답장 필요"],
   ["waiting", "상대 답장 대기"],
   ["signed", "계약 완료"],
   ["closed", "종료"],
@@ -254,6 +254,27 @@ function renderMailBody(body = "", quoteKey = "") {
       <div class="quoted-mail-body">
         ${formatMailText(quoted)}
       </div>
+    </div>
+  `;
+}
+
+function renderMailAttachments(attachments = []) {
+  const images = Array.isArray(attachments)
+    ? attachments.filter((item) => String(item?.mimeType || "").startsWith("image/") && item?.dataUrl)
+    : [];
+  if (!images.length) return "";
+  return `
+    <div class="mail-attachments">
+      ${images
+        .map(
+          (item) => `
+            <figure class="mail-attachment">
+              <img src="${escapeAttr(item.dataUrl)}" alt="${escapeAttr(item.filename || "메일 첨부 이미지")}" loading="lazy" />
+              ${item.filename ? `<figcaption>${escapeHtml(item.filename)}</figcaption>` : ""}
+            </figure>
+          `,
+        )
+        .join("")}
     </div>
   `;
 }
@@ -608,6 +629,10 @@ function sortByPriority(a, b) {
   return parseDealDate(b).getTime() - parseDealDate(a).getTime();
 }
 
+function sortByRecent(a, b) {
+  return parseDealDate(b).getTime() - parseDealDate(a).getTime();
+}
+
 function filteredDeals() {
   const query = state.query.trim().toLowerCase();
   return deals
@@ -618,7 +643,7 @@ function filteredDeals() {
         `${deal.advertiser} ${deal.contact} ${deal.brand} ${deal.statusLabel} ${deal.oneLine} ${priority.label}`.toLowerCase();
       return matchesFilter && (!query || haystack.includes(query));
     })
-    .sort(sortByPriority);
+    .sort(["priority", "urgent", "soon"].includes(state.filter) ? sortByPriority : sortByRecent);
 }
 
 function renderSummary() {
@@ -722,6 +747,11 @@ function messageSnippet(body = "", length = 86) {
     .slice(0, length);
 }
 
+function compactSummary(text = "", length = 74) {
+  const snippet = messageSnippet(text, length).replace(/[.。]\s*$/g, "");
+  return snippet || "원문 확인 필요";
+}
+
 function uniqueItems(items, limit = 6) {
   const seen = new Set();
   return items
@@ -771,16 +801,16 @@ function buildDealInsight(deal, messages) {
   const lastFromMe = latest.from && isSenderMe(latest.from);
   const conditions = extractConditions(allText);
   const latestSender = senderName(latestExternal.from);
-  const latestSummary = messageSnippet(latestExternalText || latestText, 150);
+  const latestSummary = compactSummary(latestExternalText || latestText, 92);
   const need = lastFromMe ? "상대 답장을 기다리는 상태" : inferNeed(latestExternalText || latestText);
   const progress = lastFromMe
-    ? `내가 ${compactTimelineDate(latest.date)}에 답장을 보냈고, 현재는 ${latestSender}의 회신을 기다리는 중입니다.`
-    : `${latestSender}가 마지막으로 보낸 메일 기준으로 ${need}가 필요합니다.`;
+    ? `내 답장 완료 · ${latestSender} 회신 대기`
+    : `답장 필요 · ${need}`;
   const conversation = uniqueItems([
-    usableMessages[0] ? `처음 제안: ${messageSnippet(currentMessageText(usableMessages[0]), 120)}` : "",
-    latestMine ? `내가 보낸 최근 답장: ${messageSnippet(currentMessageText(latestMine), 120)}` : "",
-    latestExternal ? `상대의 최근 요청/제안: ${latestSummary}` : "",
-  ], 4);
+    latestExternal ? `상대: ${compactSummary(latestExternalText, 82)}` : "",
+    latestMine ? `나: ${compactSummary(currentMessageText(latestMine), 82)}` : "",
+    usableMessages[0] && usableMessages[0] !== latestExternal ? `시작: ${compactSummary(currentMessageText(usableMessages[0]), 82)}` : "",
+  ], 3);
   const nextSteps = lastFromMe
     ? ["새 회신이 오면 조건 변경 여부를 확인하기", "급한 건이면 2-3일 뒤 가볍게 리마인드하기"]
     : uniqueItems([
@@ -889,10 +919,6 @@ function renderDetail() {
         <h3>대화 흐름</h3>
         ${renderTimeline(deal)}
       </section>
-      <section class="section" style="grid-column: 1 / -1;">
-        <h3>다음 메일 초안</h3>
-        <div class="draft">${escapeHtml(insight.draft)}</div>
-      </section>
       <section class="section" id="mailThreadSection" style="grid-column: 1 / -1;">
         <details class="raw-mail-details" ${rawMailOpen ? "open" : ""}>
           <summary>전체 원문 보기 <span class="section-count">${messages.length}개</span></summary>
@@ -918,6 +944,7 @@ function renderDetail() {
                     </button>
                     <div class="mail-message-body">
                       ${renderMailBody(message.body, `${key}:quote`)}
+                      ${renderMailAttachments(message.attachments)}
                     </div>
                   </article>
                 `;
@@ -926,6 +953,10 @@ function renderDetail() {
               .join("")}
           </div>
         </details>
+      </section>
+      <section class="section" style="grid-column: 1 / -1;">
+        <h3>다음 메일 초안</h3>
+        <div class="draft">${escapeHtml(insight.draft)}</div>
       </section>
       </div>
     </div>
@@ -1039,12 +1070,19 @@ document.addEventListener("click", (event) => {
 
   const scrollMailButton = event.target.closest("[data-scroll-mail]");
   if (scrollMailButton) {
-    state.rawMailOpen.add(String(state.selectedId || ""));
+    const selectedId = String(state.selectedId || "");
+    const deal = deals.find((item) => String(item.id || "") === selectedId);
+    const messages = Array.isArray(deal?.messages) ? deal.messages : fallbackMessages(deal);
+    state.rawMailOpen.add(selectedId);
+    if (messages.length) {
+      state.expandedMessages.add(`${selectedId}:${messages.length - 1}`);
+    }
     renderDetail();
     requestAnimationFrame(() => {
-      const thread = document.querySelector("#mailThreadSection");
+      const latest = document.querySelector("#mailThreadSection .mail-message:last-child");
+      const thread = latest || document.querySelector("#mailThreadSection");
       if (thread) {
-        thread.scrollIntoView({ behavior: "smooth", block: "start" });
+        thread.scrollIntoView({ behavior: "smooth", block: latest ? "center" : "start" });
         showToast("전체 원문을 펼쳤습니다.");
       }
     });
