@@ -19,6 +19,7 @@ const state = {
   lastError: "",
   expandedMessages: new Set(),
   expandedQuotes: new Set(),
+  rawMailOpen: new Set(),
   gmailConfigured: false,
   gmailConnected: false,
 };
@@ -741,6 +742,7 @@ function renderDetail() {
     state.expandedMessages.add(`${deal.id}:${messages.length - 1}`);
   }
   const insight = buildDealInsight(deal, messages);
+  const rawMailOpen = state.rawMailOpen.has(String(deal.id));
 
   $("#detail").innerHTML = `
     <div class="detail-head">
@@ -784,7 +786,7 @@ function renderDetail() {
         <div class="draft">${escapeHtml(insight.draft)}</div>
       </section>
       <section class="section" id="mailThreadSection" style="grid-column: 1 / -1;">
-        <details class="raw-mail-details">
+        <details class="raw-mail-details" ${rawMailOpen ? "open" : ""}>
           <summary>전체 원문 보기 <span class="section-count">${messages.length}개</span></summary>
           <div class="mail-thread">
             ${messages
@@ -911,13 +913,31 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  const rawSummary = event.target.closest(".raw-mail-details > summary");
+  if (rawSummary) {
+    event.preventDefault();
+    const id = String(state.selectedId || "");
+    if (state.rawMailOpen.has(id)) {
+      state.rawMailOpen.delete(id);
+    } else {
+      state.rawMailOpen.add(id);
+    }
+    renderDetail();
+    return;
+  }
+
   const scrollMailButton = event.target.closest("[data-scroll-mail]");
   if (scrollMailButton) {
-    const thread = document.querySelector("#mailThreadSection");
-    if (thread) {
-      thread.scrollIntoView({ behavior: "smooth", block: "start" });
-      showToast("이전 대화까지 포함한 전체 원문으로 이동했습니다.");
-    }
+    state.rawMailOpen.add(String(state.selectedId || ""));
+    renderDetail();
+    requestAnimationFrame(() => {
+      const thread = document.querySelector("#mailThreadSection");
+      if (thread) {
+        thread.scrollIntoView({ behavior: "smooth", block: "start" });
+        showToast("전체 원문을 펼쳤습니다.");
+      }
+    });
+    return;
   }
 
   const messageButton = event.target.closest("[data-message-key]");
