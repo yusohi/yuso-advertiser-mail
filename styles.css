@@ -586,8 +586,27 @@ button:disabled {
   color: var(--muted);
 }
 
-.deal-meta {
+.deal-meta,
+.deal-preview {
   font-size: 13px;
+}
+
+.deal-action {
+  overflow: hidden;
+  color: #202124;
+  font-size: 13px;
+  font-weight: 750;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.deal-preview {
+  display: -webkit-box;
+  overflow: hidden;
+  color: #5f6368;
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .badge {
@@ -1291,7 +1310,7 @@ body.compact .dashboard {
   .deal-button {
     grid-template-columns: 52px minmax(0, 1fr);
     gap: 12px;
-    padding: 14px 8px 13px 14px;
+    padding: 14px 8px 14px 14px;
   }
 
   .deal-avatar {
@@ -1320,8 +1339,17 @@ body.compact .dashboard {
     display: block;
     max-width: 100%;
     color: #5f6368;
+    font-size: 12px;
+    line-height: 1.35;
+  }
+
+  .deal-action {
     font-size: 14px;
     line-height: 1.35;
+  }
+
+  .deal-preview {
+    font-size: 14px;
   }
 
   .delete-deal {

@@ -575,22 +575,29 @@ function renderList() {
   $("#resultCount").textContent = `${items.length}건`;
   $("#dealList").innerHTML = items
     .map(
-      (deal) => `
-      <div class="deal-row ${state.selectedId === deal.id ? "active" : ""}">
-        <button class="deal-button" data-id="${escapeAttr(deal.id)}" type="button">
-          ${avatarMarkup(deal.advertiser || deal.contact, deal.email || deal.contact)}
-          <span class="deal-content">
-            <span class="deal-title">
-              <strong>${escapeHtml(deal.advertiser)}</strong>
-              <span class="badge ${deal.status}">${escapeHtml(deal.statusLabel)}</span>
+      (deal) => {
+        const messages = Array.isArray(deal.messages) ? deal.messages : fallbackMessages(deal);
+        const insight = buildDealInsight(deal, messages);
+        const primaryAction = insight.nextSteps[0] || deal.nextAction || "내용 확인하기";
+        const preview = insight.latestSummary || deal.oneLine || deal.brand || "";
+        return `
+        <div class="deal-row ${state.selectedId === deal.id ? "active" : ""}">
+          <button class="deal-button" data-id="${escapeAttr(deal.id)}" type="button">
+            ${avatarMarkup(deal.advertiser || deal.contact, deal.email || deal.contact)}
+            <span class="deal-content">
+              <span class="deal-title">
+                <strong>${escapeHtml(deal.advertiser)}</strong>
+                <span class="badge ${deal.status}">${escapeHtml(deal.statusLabel)}</span>
+              </span>
+              <span class="deal-action">${escapeHtml(primaryAction)}</span>
+              <span class="deal-preview">${escapeHtml(preview)}</span>
+              <span class="deal-meta">마지막 메일 ${escapeHtml(deal.lastTouch)}</span>
             </span>
-            <span class="deal-meta">${escapeHtml(deal.brand)}</span>
-            <span class="deal-meta">마지막 메일 ${escapeHtml(deal.lastTouch)}</span>
-          </span>
-        </button>
-        <button class="delete-deal" data-delete-id="${escapeAttr(deal.id)}" aria-label="${escapeAttr(deal.advertiser)} 삭제" type="button">×</button>
-      </div>
-    `,
+          </button>
+          <button class="delete-deal" data-delete-id="${escapeAttr(deal.id)}" aria-label="${escapeAttr(deal.advertiser)} 삭제" type="button">×</button>
+        </div>
+      `;
+      },
     )
     .join("");
 }
