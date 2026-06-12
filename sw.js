@@ -1,4 +1,4 @@
-const CACHE_VERSION = "yuso-mail-v2026-06-12-compact-mobile-drawer";
+const CACHE_VERSION = "yuso-mail-v2026-06-12-desktop-detail-motion";
 const APP_SHELL = ["./", "./index.html", "./styles.css", "./app.js", "./manifest.webmanifest", "./icon.svg"];
 
 self.addEventListener("install", (event) => {

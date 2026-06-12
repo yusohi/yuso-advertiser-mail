@@ -456,6 +456,15 @@ function openMobileDetail() {
   document.querySelector(".detail")?.scrollTo({ top: 0 });
 }
 
+function openDesktopDetail() {
+  if (isMobileLayout()) return;
+  document.body.classList.add("desktop-detail-open", "desktop-detail-animating");
+  document.querySelector(".detail")?.scrollTo({ top: 0, behavior: "smooth" });
+  window.setTimeout(() => {
+    document.body.classList.remove("desktop-detail-animating");
+  }, 320);
+}
+
 function closeMobileDetail() {
   document.body.classList.remove("mobile-detail-open");
 }
@@ -773,7 +782,8 @@ function renderDetail() {
   const rawMailOpen = state.rawMailOpen.has(String(deal.id));
 
   $("#detail").innerHTML = `
-    <div class="detail-head">
+    <div class="detail-panel">
+      <div class="detail-head">
       <button class="mobile-back-button" data-mobile-back="true" type="button" aria-label="메일 목록으로 돌아가기">‹</button>
       <div>
         <span class="badge ${deal.status}">${deal.statusLabel}</span>
@@ -785,9 +795,9 @@ function renderDetail() {
       <div class="link-actions">
         <button class="gmail-link" data-scroll-mail="true" type="button">전체 원문 보기</button>
       </div>
-    </div>
+      </div>
 
-    <div class="grid">
+      <div class="grid">
       <section class="section insight-card">
         <h3>현재 어디까지 왔는지</h3>
         <p class="lead-text">${escapeHtml(insight.progress)}</p>
@@ -847,6 +857,7 @@ function renderDetail() {
           </div>
         </details>
       </section>
+      </div>
     </div>
   `;
 }
@@ -925,6 +936,7 @@ document.addEventListener("click", (event) => {
     state.selectedId = dealButton.dataset.id;
     render();
     openMobileDetail();
+    openDesktopDetail();
     return;
   }
 
