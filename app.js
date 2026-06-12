@@ -371,9 +371,28 @@ function applyLayoutMode() {
 }
 
 function toggleLayoutMode() {
+  if (isMobileLayout()) {
+    document.body.classList.toggle("mobile-drawer-open");
+    return;
+  }
   const next = document.body.classList.contains("compact") ? "comfortable" : "compact";
   localStorage.setItem(LAYOUT_KEY, next);
   applyLayoutMode();
+}
+
+function isMobileLayout() {
+  return window.matchMedia("(max-width: 980px)").matches;
+}
+
+function openMobileDetail() {
+  if (!isMobileLayout()) return;
+  document.body.classList.add("mobile-detail-open");
+  document.body.classList.remove("mobile-drawer-open");
+  document.querySelector(".detail")?.scrollTo({ top: 0 });
+}
+
+function closeMobileDetail() {
+  document.body.classList.remove("mobile-detail-open");
 }
 
 function openAccountPanel() {
@@ -494,12 +513,15 @@ function renderList() {
       (deal) => `
       <div class="deal-row ${state.selectedId === deal.id ? "active" : ""}">
         <button class="deal-button" data-id="${escapeAttr(deal.id)}" type="button">
-          <div class="deal-title">
-            <strong>${escapeHtml(deal.advertiser)}</strong>
-            <span class="badge ${deal.status}">${escapeHtml(deal.statusLabel)}</span>
-          </div>
-          <div class="deal-meta">${escapeHtml(deal.brand)}</div>
-          <div class="deal-meta">마지막 메일 ${escapeHtml(deal.lastTouch)}</div>
+          <span class="deal-avatar">${escapeHtml(initials(deal.advertiser || deal.contact))}</span>
+          <span class="deal-content">
+            <span class="deal-title">
+              <strong>${escapeHtml(deal.advertiser)}</strong>
+              <span class="badge ${deal.status}">${escapeHtml(deal.statusLabel)}</span>
+            </span>
+            <span class="deal-meta">${escapeHtml(deal.brand)}</span>
+            <span class="deal-meta">마지막 메일 ${escapeHtml(deal.lastTouch)}</span>
+          </span>
         </button>
         <button class="delete-deal" data-delete-id="${escapeAttr(deal.id)}" aria-label="${escapeAttr(deal.advertiser)} 삭제" type="button">×</button>
       </div>
@@ -679,6 +701,7 @@ function renderDetail() {
 
   $("#detail").innerHTML = `
     <div class="detail-head">
+      <button class="mobile-back-button" data-mobile-back="true" type="button" aria-label="메일 목록으로 돌아가기">‹</button>
       <div>
         <span class="badge ${deal.status}">${deal.statusLabel}</span>
         <h2>${deal.advertiser}</h2>
@@ -789,6 +812,15 @@ document.addEventListener("click", (event) => {
     closeAccountPanel();
   }
 
+  if (document.body.classList.contains("mobile-drawer-open") && isMobileLayout()) {
+    const inDrawer = event.target.closest(".sidebar");
+    const onMenu = event.target.closest("#layoutToggle");
+    if (!inDrawer && !onMenu) {
+      document.body.classList.remove("mobile-drawer-open");
+      return;
+    }
+  }
+
   const deleteButton = event.target.closest("[data-delete-id]");
   if (deleteButton) {
     const id = deleteButton.dataset.deleteId;
@@ -819,13 +851,20 @@ document.addEventListener("click", (event) => {
   if (dealButton) {
     state.selectedId = dealButton.dataset.id;
     render();
+    openMobileDetail();
     return;
   }
 
   const filterButton = event.target.closest("[data-filter]");
   if (filterButton) {
     state.filter = filterButton.dataset.filter;
+    document.body.classList.remove("mobile-drawer-open");
     render();
+    return;
+  }
+
+  if (event.target.closest("[data-mobile-back]")) {
+    closeMobileDetail();
     return;
   }
 

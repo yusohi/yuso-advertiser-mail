@@ -494,13 +494,33 @@ button:disabled {
 
 .deal-button {
   display: grid;
-  gap: 5px;
+  grid-template-columns: 44px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
   min-width: 0;
   padding: 14px 14px 12px 18px;
   text-align: left;
   background: transparent;
   border: 0;
   cursor: pointer;
+}
+
+.deal-avatar {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: #d93025;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 850;
+}
+
+.deal-content {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
 }
 
 .delete-deal {
@@ -596,6 +616,10 @@ button:disabled {
   align-items: start;
   padding-bottom: 20px;
   border-bottom: 1px solid var(--line);
+}
+
+.mobile-back-button {
+  display: none;
 }
 
 .detail h2 {
@@ -1083,7 +1107,7 @@ body.compact .dashboard {
   }
 
   #layoutToggle {
-    display: none;
+    display: inline-grid;
   }
 
   .brand-area h1 {
@@ -1129,7 +1153,51 @@ body.compact .dashboard {
   }
 
   .sidebar {
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 35;
+    display: block;
+    width: min(82vw, 340px);
+    padding: 28px 16px;
+    background: #fff;
+    box-shadow: 8px 0 28px rgba(32, 33, 36, 0.22);
+    transform: translateX(-105%);
+    transition: transform 0.22s ease;
+  }
+
+  body.mobile-drawer-open .sidebar {
+    transform: translateX(0);
+  }
+
+  body.mobile-drawer-open::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: 30;
+    background: rgba(32, 33, 36, 0.42);
+  }
+
+  .compose-button {
     display: none;
+  }
+
+  .sidebar-section {
+    margin: 24px 0 0;
+  }
+
+  #statusFilters {
+    gap: 8px;
+  }
+
+  #statusFilters button {
+    min-height: 48px;
+    padding: 0 14px;
+    border-radius: 0 24px 24px 0;
+    font-size: 17px;
+  }
+
+  #statusFilters button strong {
+    font-size: 14px;
   }
 
   .mail-surface {
@@ -1155,14 +1223,19 @@ body.compact .dashboard {
 
   .dashboard,
   body.compact .dashboard {
-    grid-template-columns: 1fr;
+    position: relative;
+    display: block;
     height: auto;
+    min-height: calc(100dvh - 106px);
+    overflow: hidden;
   }
 
   .deal-list {
-    max-height: 34vh;
+    max-height: none;
+    min-height: calc(100dvh - 106px);
+    overflow: visible;
     border-right: 0;
-    border-bottom: 1px solid var(--line);
+    border-bottom: 0;
     background: #fff;
   }
 
@@ -1171,26 +1244,39 @@ body.compact .dashboard {
   }
 
   .deal-button {
-    padding: 12px 10px 11px 14px;
+    grid-template-columns: 52px minmax(0, 1fr);
+    gap: 12px;
+    padding: 14px 8px 13px 14px;
+  }
+
+  .deal-avatar {
+    width: 50px;
+    height: 50px;
+    font-size: 18px;
   }
 
   .deal-title {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 4px;
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    min-width: 0;
   }
 
   .deal-title strong {
-    font-size: 15px;
+    font-size: 17px;
+    font-weight: 500;
   }
 
   .deal-title .badge {
-    width: fit-content;
-    min-height: 21px;
-    font-size: 11px;
+    display: none;
   }
 
   .deal-meta {
-    font-size: 12px;
+    display: block;
+    max-width: 100%;
+    color: #5f6368;
+    font-size: 14px;
+    line-height: 1.35;
   }
 
   .delete-deal {
@@ -1199,24 +1285,52 @@ body.compact .dashboard {
   }
 
   .detail {
+    position: fixed;
+    inset: 0 0 0 auto;
+    z-index: 28;
+    width: 100vw;
+    min-height: 100dvh;
     padding: 0;
-    overflow: visible;
+    overflow: auto;
     background: #fff;
+    transform: translateX(100%);
+    transition: transform 0.24s ease;
+  }
+
+  body.mobile-detail-open .detail {
+    transform: translateX(0);
   }
 
   .detail-head {
     position: sticky;
-    top: 58px;
+    top: 0;
     z-index: 10;
-    gap: 8px;
-    padding: 14px 16px;
+    display: grid;
+    grid-template-columns: 42px minmax(0, 1fr);
+    align-items: start;
+    gap: 0;
+    padding: 14px 12px 12px;
     background: #fff;
     border-bottom: 1px solid var(--line);
   }
 
+  .mobile-back-button {
+    display: grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: #3c4043;
+    font-size: 40px;
+    line-height: 1;
+  }
+
   .detail h2 {
-    margin: 6px 0 4px;
-    font-size: 22px;
+    margin: 8px 0 8px;
+    font-size: 25px;
+    line-height: 1.2;
   }
 
   .detail-head .muted:nth-of-type(2),
@@ -1225,6 +1339,7 @@ body.compact .dashboard {
   }
 
   .link-actions {
+    grid-column: 2;
     justify-content: flex-start;
   }
 
