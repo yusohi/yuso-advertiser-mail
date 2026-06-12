@@ -25,6 +25,9 @@ const state = {
 };
 
 const statusLabels = [
+  ["priority", "중요도순"],
+  ["urgent", "빨리 답장"],
+  ["soon", "오늘 확인"],
   ["all", "전체"],
   ["reply", "내 답장 필요"],
   ["waiting", "상대 답장 대기"],
@@ -125,7 +128,7 @@ function isSenderMe(value = "") {
 }
 
 function messagePreview(body = "") {
-  return String(body).replace(/\s+/g, " ").trim().slice(0, 150);
+  return normalizeVisibleMailText(body).replace(/\s+/g, " ").trim().slice(0, 150);
 }
 
 function cleanMailText(body = "") {
@@ -403,7 +406,10 @@ async function syncGmailNow({ silent = false } = {}) {
     state.updatedAt = result.updatedAt || new Date().toLocaleString("ko-KR");
     state.gmailConnected = true;
     state.lastError = "";
-    if (!silent) showToast(`Gmail 동기화 완료: ${result.finalCount || 0}건`);
+    if (!silent) {
+      const skipped = result.skippedNoise ? ` · 뉴스레터/스팸 ${result.skippedNoise}건 제외` : "";
+      showToast(`Gmail 동기화 완료: ${result.finalCount || 0}건${skipped}`);
+    }
     await loadDeals({ manual: true });
   } catch (error) {
     state.lastError = "Gmail 동기화 필요";
@@ -544,13 +550,75 @@ async function deleteDeal(id) {
   }
 }
 
+function parseDealDate(deal) {
+  const iso = deal?.lastTouchIso || deal?.updatedAtIso;
+  if (iso) {
+    const parsed = new Date(iso);
+    if (!Number.isNaN(parsed.getTime())) return parsed;
+  }
+  const text = String(deal?.lastTouch || "");
+  const match = text.match(/(\d{4})\.\s*(\d{1,2})\.\s*(\d{1,2})\.\s*(\d{1,2})시\s*(\d{1,2})분(?:\s*(\d{1,2})초)?/);
+  if (match) {
+    return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]), Number(match[4]), Number(match[5]), Number(match[6] || 0));
+  }
+  const fallback = new Date(text);
+  return Number.isNaN(fallback.getTime()) ? new Date(0) : fallback;
+}
+
+function dealPriority(deal) {
+  const savedScore = Number(deal?.priorityScore || 0);
+  const savedLevel = String(deal?.priorityLevel || "");
+  if (savedScore && savedLevel) {
+    return {
+      score: savedScore,
+      level: savedLevel,
+      label: deal.priorityLabel || (savedLevel === "urgent" ? "빨리 답장" : savedLevel === "soon" ? "오늘 확인" : "일반 확인"),
+    };
+  }
+
+  if (deal?.status !== "reply") {
+    return { score: 10, level: "waiting", label: "대기" };
+  }
+  const messages = Array.isArray(deal.messages) ? deal.messages : fallbackMessages(deal);
+  const latest = messages[messages.length - 1] || {};
+  const text = currentMessageText(latest);
+  const ageHours = Math.max(0, (Date.now() - parseDealDate(deal).getTime()) / 36e5);
+  let score = 50;
+  if (ageHours >= 72) score += 28;
+  else if (ageHours >= 24) score += 18;
+  else if (ageHours >= 8) score += 8;
+  if (/(마감|오늘|내일|금일|이번\s*주|급|빠르게|확인\s*부탁|리마인드|reminder|urgent|asap|deadline)/i.test(text)) score += 24;
+  if (/(계약|비용|광고비|단가|견적|입금|세금계산서|vat|배송지|주소|촬영|업로드|일정)/i.test(text)) score += 12;
+  if (score >= 82) return { score, level: "urgent", label: "빨리 답장" };
+  if (score >= 62) return { score, level: "soon", label: "오늘 확인" };
+  return { score, level: "normal", label: "일반 확인" };
+}
+
+function dealMatchesFilter(deal, filter) {
+  const priority = dealPriority(deal);
+  if (filter === "priority" || filter === "all") return true;
+  if (filter === "urgent") return deal.status === "reply" && priority.level === "urgent";
+  if (filter === "soon") return deal.status === "reply" && (priority.level === "urgent" || priority.level === "soon");
+  return deal.status === filter;
+}
+
+function sortByPriority(a, b) {
+  const priorityDiff = dealPriority(b).score - dealPriority(a).score;
+  if (priorityDiff) return priorityDiff;
+  return parseDealDate(b).getTime() - parseDealDate(a).getTime();
+}
+
 function filteredDeals() {
   const query = state.query.trim().toLowerCase();
-  return deals.filter((deal) => {
-    const matchesFilter = state.filter === "all" || deal.status === state.filter;
-    const haystack = `${deal.advertiser} ${deal.contact} ${deal.brand} ${deal.statusLabel} ${deal.oneLine}`.toLowerCase();
-    return matchesFilter && (!query || haystack.includes(query));
-  });
+  return deals
+    .filter((deal) => {
+      const priority = dealPriority(deal);
+      const matchesFilter = dealMatchesFilter(deal, state.filter);
+      const haystack =
+        `${deal.advertiser} ${deal.contact} ${deal.brand} ${deal.statusLabel} ${deal.oneLine} ${priority.label}`.toLowerCase();
+      return matchesFilter && (!query || haystack.includes(query));
+    })
+    .sort(sortByPriority);
 }
 
 function renderSummary() {
@@ -568,7 +636,7 @@ function renderFilters() {
   $("#statusFilters").innerHTML = statusLabels
     .map(
       ([id, label]) => {
-        const count = id === "all" ? deals.length : deals.filter((deal) => deal.status === id).length;
+        const count = deals.filter((deal) => dealMatchesFilter(deal, id)).length;
         return `<button class="${state.filter === id ? "active" : ""}" data-filter="${id}" type="button"><span>${label}</span><strong>${count}</strong></button>`;
       },
     )
@@ -587,6 +655,7 @@ function renderList() {
       (deal) => {
         const messages = Array.isArray(deal.messages) ? deal.messages : fallbackMessages(deal);
         const insight = buildDealInsight(deal, messages);
+        const priority = dealPriority(deal);
         const primaryAction = insight.nextSteps[0] || deal.nextAction || "내용 확인하기";
         const preview = insight.latestSummary || deal.oneLine || deal.brand || "";
         return `
@@ -598,6 +667,7 @@ function renderList() {
                 <strong>${escapeHtml(deal.advertiser)}</strong>
                 <span class="badge ${deal.status}">${escapeHtml(deal.statusLabel)}</span>
               </span>
+              <span class="deal-priority ${escapeAttr(priority.level)}">${escapeHtml(priority.label)} · ${Math.round(priority.score)}점</span>
               <span class="deal-action">${escapeHtml(primaryAction)}</span>
               <span class="deal-preview">${escapeHtml(preview)}</span>
               <span class="deal-meta">마지막 메일 ${escapeHtml(deal.lastTouch)}</span>
@@ -863,7 +933,8 @@ function renderDetail() {
 }
 
 function fallbackMessages(deal) {
-  return deal.timeline.map(([date, body]) => ({
+  const timeline = Array.isArray(deal?.timeline) ? deal.timeline : [];
+  return timeline.map(([date, body]) => ({
     from: "대화 요약",
     date,
     body,

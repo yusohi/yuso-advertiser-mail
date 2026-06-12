@@ -627,6 +627,35 @@ body.desktop-detail-open .dashboard {
   white-space: nowrap;
 }
 
+.deal-priority {
+  width: fit-content;
+  max-width: 100%;
+  overflow: hidden;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #eef2f7;
+  color: #5f6368;
+  font-size: 12px;
+  font-weight: 750;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.deal-priority.urgent {
+  background: #fce8e6;
+  color: #b3261e;
+}
+
+.deal-priority.soon {
+  background: #fef7e0;
+  color: #8a5a00;
+}
+
+.deal-priority.waiting {
+  background: #e6f4ea;
+  color: #137333;
+}
+
 .deal-preview {
   display: -webkit-box;
   overflow: hidden;
@@ -1429,6 +1458,11 @@ body.compact.desktop-detail-open .dashboard {
   .deal-action {
     font-size: 14px;
     line-height: 1.35;
+  }
+
+  .deal-priority {
+    padding: 2px 7px;
+    font-size: 11px;
   }
 
   .deal-preview {
