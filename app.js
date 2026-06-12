@@ -164,14 +164,57 @@ function normalizeVisibleMailText(body = "") {
     .trim();
 }
 
+function splitSignatureText(text = "") {
+  const lines = String(text || "").split("\n");
+  const markers = [
+    /^--\s*$/,
+    /^(감사합니다|감사합니다\.|고맙습니다|Regards|Best regards|Sincerely|Thanks)[\s.!]*$/i,
+    /^(유소정|소정|한진아|담당자|드림|올림)\s*(드림|올림)?\.?$/,
+    /(creator|크리에이터|마케팅|브랜드|팀|Team|Manager|CEO|주식회사|\(주\)|@|www\.|https?:\/\/|010[-\s]\d{3,4}[-\s]\d{4})/i,
+  ];
+  let start = -1;
+  const scanFrom = Math.max(0, lines.length - 12);
+  for (let i = scanFrom; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
+    if (markers.some((pattern) => pattern.test(line))) {
+      start = i;
+      break;
+    }
+  }
+  if (start < 0 || start === 0) return { body: text.trim(), signature: "" };
+  const signature = lines.slice(start).join("\n").trim();
+  if (signature.split("\n").filter(Boolean).length > 10) return { body: text.trim(), signature: "" };
+  return {
+    body: lines.slice(0, start).join("\n").trim(),
+    signature,
+  };
+}
+
+function linkifyEscapedText(html = "") {
+  return html
+    .replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>')
+    .replace(/([\w.+-]+@[\w.-]+\.[A-Za-z]{2,})/g, '<a href="mailto:$1">$1</a>')
+    .replace(/(010[-\s]\d{3,4}[-\s]\d{4})/g, '<a href="tel:$1">$1</a>');
+}
+
+function formatInlineMailText(text = "") {
+  return linkifyEscapedText(
+    escapeHtml(text)
+      .replace(/^\*([^*\n:]{1,24})\*:\s*/gm, "<strong>$1:</strong> ")
+      .replace(/^\*\s*([^*\n:]{1,24})\s*:\s*\*/gm, "<strong>$1:</strong>")
+      .replace(/^[-•]\s+/gm, "• "),
+  );
+}
+
 function formatMailText(body = "") {
   const text = normalizeVisibleMailText(body);
   if (!text) return "";
-  const html = escapeHtml(text)
-    .replace(/^\*([^*\n:]{1,24})\*:\s*/gm, "<strong>$1:</strong> ")
-    .replace(/^\*\s*([^*\n:]{1,24})\s*:\s*\*/gm, "<strong>$1:</strong>")
-    .replace(/^[-•]\s+/gm, "• ");
-  return `<p>${html}</p>`;
+  const { body: mainText, signature } = splitSignatureText(text);
+  return `
+    ${mainText ? `<p>${formatInlineMailText(mainText)}</p>` : ""}
+    ${signature ? `<aside class="mail-signature">${formatInlineMailText(signature)}</aside>` : ""}
+  `;
 }
 
 function renderMailBody(body = "", quoteKey = "") {

@@ -886,6 +886,30 @@ button:disabled {
   font-weight: 800;
 }
 
+.mail-message a,
+.mail-signature a {
+  color: #0b57d0;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.mail-signature {
+  max-width: 760px;
+  margin-top: 22px;
+  padding: 14px 0 0 16px;
+  border-left: 2px solid #dfe4ee;
+  color: #5f6368;
+  font-size: 14px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+
+.mail-signature strong {
+  color: #3c4043;
+}
+
 .quoted-mail {
   margin-top: 22px;
 }
@@ -1461,6 +1485,13 @@ body.compact .dashboard {
   .mail-message p {
     font-size: 14px;
     line-height: 1.65;
+  }
+
+  .mail-signature {
+    margin-top: 18px;
+    padding-left: 12px;
+    font-size: 12px;
+    line-height: 1.5;
   }
 
   .event {
