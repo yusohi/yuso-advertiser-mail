@@ -328,24 +328,6 @@ button:disabled {
   overflow: auto;
 }
 
-.compose-button {
-  display: inline-flex;
-  align-items: center;
-  gap: 14px;
-  min-width: 174px;
-  height: 56px;
-  margin: 0 0 18px 8px;
-  padding: 0 22px;
-  border: 0;
-  border-radius: 18px;
-  background: #c2e7ff;
-  color: #001d35;
-  font-size: 16px;
-  font-weight: 700;
-  box-shadow: 0 1px 2px rgba(60, 64, 67, 0.2);
-  cursor: pointer;
-}
-
 .mail-nav {
   display: grid;
   gap: 2px;
@@ -1211,18 +1193,9 @@ body.compact .workspace {
 }
 
 body.compact .brand-area h1,
-body.compact .compose-button span,
 body.compact .sidebar-section,
 body.compact #statusFilters button {
   font-size: 0;
-}
-
-body.compact .compose-button {
-  min-width: 56px;
-  width: 56px;
-  padding: 0;
-  justify-content: center;
-  margin-left: 10px;
 }
 
 body.compact #statusFilters button {
@@ -1474,10 +1447,6 @@ body.compact.desktop-detail-open .dashboard {
     inset: 0;
     z-index: 30;
     background: rgba(32, 33, 36, 0.42);
-  }
-
-  .compose-button {
-    display: none;
   }
 
   .sidebar-section {
