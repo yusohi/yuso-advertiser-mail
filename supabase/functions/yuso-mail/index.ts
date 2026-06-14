@@ -455,7 +455,7 @@ function storedDealDate(deal: MailDeal) {
 }
 
 function storedDealDedupeKey(deal: MailDeal) {
-  const gmailThread = String(deal.gmail || "").match(/#(?:all|inbox)\/([^/?#]+)/)?.[1] || "";
+  const gmailThread = gmailThreadIdFromDeal(deal);
   if (gmailThread) return `gmail:${gmailThread}`;
   const latest = latestExternalStoredMessage(deal);
   return [
@@ -464,6 +464,10 @@ function storedDealDedupeKey(deal: MailDeal) {
     normalizedKey(String(deal.lastTouch || "")),
     normalizedKey(storedMessageText(latest)).slice(0, 120),
   ].join("|");
+}
+
+function gmailThreadIdFromDeal(deal: MailDeal) {
+  return String(deal.gmail || "").match(/#(?:all|inbox)\/([^/?#]+)/)?.[1] || "";
 }
 
 function betterStoredDeal(left: MailDeal, right: MailDeal) {
@@ -536,8 +540,8 @@ async function gmailJson(path: string, accessToken: string) {
   return data;
 }
 
-async function gmailThreadIds(q: string, accessToken: string, pageLimit = 2, maxResults = 50, labelIds: string[] = []) {
-  const ids = new Set<string>();
+async function gmailThreadRefs(q: string, accessToken: string, pageLimit = 2, maxResults = 50, labelIds: string[] = []) {
+  const refs = new Map<string, string>();
   let pageToken = "";
   let page = 0;
   do {
@@ -545,11 +549,11 @@ async function gmailThreadIds(q: string, accessToken: string, pageLimit = 2, max
     for (const labelId of labelIds) params.append("labelIds", labelId);
     if (pageToken) params.set("pageToken", pageToken);
     const data = await gmailJson(`threads?${params.toString()}`, accessToken);
-    for (const thread of data.threads || []) ids.add(String(thread.id));
+    for (const thread of data.threads || []) refs.set(String(thread.id), String(thread.historyId || ""));
     pageToken = String(data.nextPageToken || "");
     page++;
   } while (pageToken && page < pageLimit);
-  return ids;
+  return Array.from(refs.entries()).map(([id, historyId]) => ({ id, historyId }));
 }
 
 async function imageAttachmentsFromPayload(messageId: string, payload: JsonMap | undefined, accessToken: string) {
@@ -634,6 +638,7 @@ async function dealFromThread(thread: JsonMap, accessToken: string): Promise<Mai
     highlights: ["Gmail OAuth 즉시 동기화로 가져온 thread", `원문 메시지 ${messages.length}개 저장`, "삭제한 thread는 새 메일 전까지 복구하지 않음"],
     timeline: messages.map((message) => [String(message.date || ""), String(message.from || "")]),
     draft: needsReply ? "원문을 확인한 뒤 답장 초안을 작성하세요." : "상대 답장을 기다립니다.",
+    gmailHistoryId: String(thread.historyId || ""),
     messages,
   };
 }
@@ -670,23 +675,35 @@ async function syncGmailNow() {
     );
   }
   const threadLimit = needsBackfill ? 70 : 10;
-  const threadIds = new Set<string>();
+  const threadRefs = new Map<string, string>();
   for (const query of queries) {
-    for (const id of await gmailThreadIds(query.q, accessToken, query.pages, query.max, query.labelIds || [])) {
-      threadIds.add(id);
-      if (threadIds.size >= threadLimit) break;
+    for (const ref of await gmailThreadRefs(query.q, accessToken, query.pages, query.max, query.labelIds || [])) {
+      threadRefs.set(ref.id, ref.historyId);
+      if (threadRefs.size >= threadLimit) break;
     }
-    if (threadIds.size >= threadLimit) break;
+    if (threadRefs.size >= threadLimit) break;
   }
 
   const updated = new Map<string, MailDeal>(existingDeals.map((deal) => [String(deal.id), deal]));
+  const existingByThread = new Map<string, MailDeal>();
+  for (const deal of existingDeals) {
+    const threadId = gmailThreadIdFromDeal(deal);
+    if (threadId) existingByThread.set(threadId, deal);
+  }
   let skippedDeleted = 0;
   let skippedNoise = 0;
+  let skippedUnchanged = 0;
   let added = 0;
   let changed = 0;
-  const ids = Array.from(threadIds);
+  const refs = Array.from(threadRefs.entries()).map(([id, historyId]) => ({ id, historyId }));
   let cursor = 0;
-  const processThread = async (id: string) => {
+  const processThread = async (ref: { id: string; historyId: string }) => {
+    const existing = existingByThread.get(ref.id);
+    if (existing?.gmailHistoryId && ref.historyId && String(existing.gmailHistoryId) === ref.historyId) {
+      skippedUnchanged++;
+      return;
+    }
+    const id = ref.id;
     const thread = await gmailJson(`threads/${id}?format=full`, accessToken);
     if (isNoiseThread(thread)) {
       skippedNoise++;
@@ -709,10 +726,10 @@ async function syncGmailNow() {
     updated.set(String(deal.id), previous ? betterStoredDeal(previous, deal) : deal);
   };
   await Promise.all(
-    Array.from({ length: Math.min(8, ids.length) }, async () => {
-      while (cursor < ids.length) {
-        const id = ids[cursor++];
-        await processThread(id);
+    Array.from({ length: Math.min(8, refs.length) }, async () => {
+      while (cursor < refs.length) {
+        const ref = refs[cursor++];
+        await processThread(ref);
       }
     }),
   );
@@ -721,7 +738,7 @@ async function syncGmailNow() {
   payload.source = "Gmail OAuth yuso@wootso.com only";
   payload.updatedAt = seoulNow();
   await updateMailPayload(payload);
-  return { ok: true, added, updated: changed, skippedDeleted, skippedNoise, scanned: ids.length, finalCount: payload.deals.length, updatedAt: payload.updatedAt };
+  return { ok: true, added, updated: changed, skippedDeleted, skippedNoise, skippedUnchanged, scanned: refs.length, finalCount: payload.deals.length, updatedAt: payload.updatedAt };
 }
 
 async function handlePost(req: Request, p: string) {
