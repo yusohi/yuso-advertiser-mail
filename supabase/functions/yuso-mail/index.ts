@@ -648,7 +648,7 @@ async function syncGmailNow() {
     {
       q: "newer_than:45d -in:trash -in:spam",
       pages: 1,
-      max: 15,
+      max: 10,
       labelIds: [YUSO_LABEL_ID],
     },
   ];
@@ -669,7 +669,7 @@ async function syncGmailNow() {
       { q: "from:jnhan@momentsco.com newer_than:180d -in:trash -in:spam", pages: 1, max: 20, labelIds: [YUSO_LABEL_ID] },
     );
   }
-  const threadLimit = needsBackfill ? 70 : 15;
+  const threadLimit = needsBackfill ? 70 : 10;
   const threadIds = new Set<string>();
   for (const query of queries) {
     for (const id of await gmailThreadIds(query.q, accessToken, query.pages, query.max, query.labelIds || [])) {
