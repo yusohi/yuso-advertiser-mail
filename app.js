@@ -127,6 +127,15 @@ function isSenderMe(value = "") {
   return /유소|yuso@wootso\.com|yuso/i.test(String(value));
 }
 
+function normalizedKey(value = "") {
+  return String(value || "")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/[^\p{L}\p{N}@.]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
 function messagePreview(body = "") {
   return normalizeVisibleMailText(body).replace(/\s+/g, " ").trim().slice(0, 150);
 }
@@ -310,7 +319,7 @@ async function loadDeals({ manual = false } = {}) {
       throw new Error("API 응답에 deals 배열이 없습니다");
     }
 
-    deals = payload.deals;
+    deals = normalizeDeals(payload.deals);
     state.updatedAt = payload.updatedAt || new Date().toLocaleString("ko-KR");
     state.lastError = "";
     hideLogin();
@@ -596,8 +605,61 @@ function parseDealDate(deal) {
   return Number.isNaN(fallback.getTime()) ? new Date(0) : fallback;
 }
 
+function dealMessages(deal) {
+  return Array.isArray(deal?.messages) ? deal.messages : fallbackMessages(deal);
+}
+
+function latestExternalMessage(deal) {
+  const messages = dealMessages(deal);
+  return [...messages].reverse().find((message) => !isSenderMe(message?.from)) || messages[messages.length - 1] || {};
+}
+
+function isWootsoCompanyDeal(deal) {
+  const latestExternal = latestExternalMessage(deal);
+  const primaryText = [
+    deal?.advertiser,
+    deal?.contact,
+    deal?.brand,
+    currentMessageText(latestExternal).slice(0, 700),
+  ].join(" ");
+  return /웃소|wootso/i.test(primaryText) && !/(유소|유소정|소정|yuso\.hi|yuso@wootso\.com)/i.test(primaryText);
+}
+
+function dealDedupeKey(deal) {
+  const gmailThread = String(deal?.gmail || "").match(/#(?:all|inbox)\/([^/?#]+)/)?.[1] || "";
+  if (gmailThread) return `gmail:${gmailThread}`;
+  const latest = latestExternalMessage(deal);
+  return [
+    normalizedKey(deal?.advertiser || deal?.contact || deal?.email),
+    normalizedKey(deal?.brand),
+    normalizedKey(deal?.lastTouch),
+    normalizedKey(currentMessageText(latest)).slice(0, 120),
+  ].join("|");
+}
+
+function betterDeal(left, right) {
+  const leftMessages = dealMessages(left).length;
+  const rightMessages = dealMessages(right).length;
+  const leftHasGmail = /^https:\/\/mail\.google\.com/i.test(String(left?.gmail || ""));
+  const rightHasGmail = /^https:\/\/mail\.google\.com/i.test(String(right?.gmail || ""));
+  if (leftHasGmail !== rightHasGmail) return leftHasGmail ? left : right;
+  if (leftMessages !== rightMessages) return leftMessages > rightMessages ? left : right;
+  return parseDealDate(left).getTime() >= parseDealDate(right).getTime() ? left : right;
+}
+
+function normalizeDeals(list = []) {
+  const unique = new Map();
+  for (const deal of Array.isArray(list) ? list : []) {
+    if (!deal || isWootsoCompanyDeal(deal)) continue;
+    const key = dealDedupeKey(deal);
+    const current = unique.get(key);
+    unique.set(key, current ? betterDeal(current, deal) : deal);
+  }
+  return Array.from(unique.values());
+}
+
 function priorityTextForDeal(deal) {
-  const messages = Array.isArray(deal.messages) ? deal.messages : fallbackMessages(deal);
+  const messages = dealMessages(deal);
   const latest = messages[messages.length - 1] || {};
   return `${currentMessageText(latest)} ${deal?.brand || ""} ${deal?.oneLine || ""} ${deal?.nextAction || ""}`;
 }

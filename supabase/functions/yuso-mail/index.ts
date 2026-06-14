@@ -383,6 +383,78 @@ function advertiserFromThread(thread: JsonMap) {
   return senderEmail(thread).replace(/<.*>/, "").replace(/"/g, "").trim() || id;
 }
 
+function normalizedKey(value = "") {
+  return String(value || "")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/[^\p{L}\p{N}@.]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function storedMessages(deal: MailDeal) {
+  return Array.isArray(deal.messages) ? deal.messages : [];
+}
+
+function storedMessageText(message: JsonMap | undefined) {
+  return String(message?.body || "").replace(/\s+/g, " ").trim();
+}
+
+function latestExternalStoredMessage(deal: MailDeal) {
+  const messages = storedMessages(deal);
+  return [...messages].reverse().find((message) => !/유소|yuso@wootso\.com|yuso/i.test(String(message?.from || ""))) ||
+    messages[messages.length - 1] ||
+    {};
+}
+
+function isWootsoCompanyDeal(deal: MailDeal) {
+  const latestExternal = latestExternalStoredMessage(deal);
+  const primaryText = [
+    deal.advertiser,
+    deal.contact,
+    deal.brand,
+    storedMessageText(latestExternal).slice(0, 700),
+  ].join(" ");
+  return /웃소|wootso/i.test(primaryText) && !/(유소|유소정|소정|yuso\.hi|yuso@wootso\.com)/i.test(primaryText);
+}
+
+function storedDealDate(deal: MailDeal) {
+  return iso(deal.lastTouchIso || deal.updatedAtIso || deal.lastTouch);
+}
+
+function storedDealDedupeKey(deal: MailDeal) {
+  const gmailThread = String(deal.gmail || "").match(/#(?:all|inbox)\/([^/?#]+)/)?.[1] || "";
+  if (gmailThread) return `gmail:${gmailThread}`;
+  const latest = latestExternalStoredMessage(deal);
+  return [
+    normalizedKey(String(deal.advertiser || deal.contact || deal.email || "")),
+    normalizedKey(String(deal.brand || "")),
+    normalizedKey(String(deal.lastTouch || "")),
+    normalizedKey(storedMessageText(latest)).slice(0, 120),
+  ].join("|");
+}
+
+function betterStoredDeal(left: MailDeal, right: MailDeal) {
+  const leftHasGmail = /^https:\/\/mail\.google\.com/i.test(String(left.gmail || ""));
+  const rightHasGmail = /^https:\/\/mail\.google\.com/i.test(String(right.gmail || ""));
+  if (leftHasGmail !== rightHasGmail) return leftHasGmail ? left : right;
+  const leftMessages = storedMessages(left).length;
+  const rightMessages = storedMessages(right).length;
+  if (leftMessages !== rightMessages) return leftMessages > rightMessages ? left : right;
+  return storedDealDate(left) >= storedDealDate(right) ? left : right;
+}
+
+function cleanupDeals(deals: MailDeal[] = []) {
+  const unique = new Map<string, MailDeal>();
+  for (const deal of Array.isArray(deals) ? deals : []) {
+    if (!deal || isWootsoCompanyDeal(deal)) continue;
+    const key = storedDealDedupeKey(deal);
+    const current = unique.get(key);
+    unique.set(key, current ? betterStoredDeal(current, deal) : deal);
+  }
+  return Array.from(unique.values());
+}
+
 function isDeleted(payload: MailPayload, deal: MailDeal, latestDate: Date) {
   const deleted = Array.isArray(payload.deletedDeals) ? payload.deletedDeals : [];
   return deleted.some((item) => {
@@ -561,7 +633,7 @@ async function syncGmailNow() {
     if (threadIds.size >= 90) break;
   }
 
-  const updated = new Map<string, MailDeal>((payload.deals || []).map((deal) => [String(deal.id), deal]));
+  const updated = new Map<string, MailDeal>(cleanupDeals(payload.deals || []).map((deal) => [String(deal.id), deal]));
   let skippedDeleted = 0;
   let skippedNoise = 0;
   let added = 0;
@@ -588,7 +660,7 @@ async function syncGmailNow() {
     updated.set(String(deal.id), { ...(updated.get(String(deal.id)) || {}), ...deal });
   }
 
-  payload.deals = Array.from(updated.values());
+  payload.deals = cleanupDeals(Array.from(updated.values()));
   payload.source = "Gmail OAuth yuso@wootso.com only";
   payload.updatedAt = seoulNow();
   await updateMailPayload(payload);
@@ -608,7 +680,7 @@ async function handlePost(req: Request, p: string) {
     if (!(await verifyPassword(password))) return json(req, { error: "unauthorized" }, 401);
     const payload = await mailPayload();
     if (!payload) return json(req, { error: "data_not_found" }, 404);
-    return json(req, payload, 200);
+    return json(req, { ...payload, deals: cleanupDeals(payload.deals || []) }, 200);
   }
 
   if (p === "/api/delete-deal") {
