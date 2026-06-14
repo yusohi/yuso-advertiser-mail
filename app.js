@@ -597,9 +597,20 @@ function parseDealDate(deal) {
     if (!Number.isNaN(parsed.getTime())) return parsed;
   }
   const text = String(deal?.lastTouch || "");
-  const match = text.match(/(\d{4})\.\s*(\d{1,2})\.\s*(\d{1,2})\.\s*(\d{1,2})시\s*(\d{1,2})분(?:\s*(\d{1,2})초)?/);
-  if (match) {
-    return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]), Number(match[4]), Number(match[5]), Number(match[6] || 0));
+  const normalized = text.replace(/\s+/g, " ").trim();
+  const patterns = [
+    /(\d{4})\.\s*(\d{1,2})\.\s*(\d{1,2})\.?\s*(\d{1,2})시\s*(\d{1,2})분(?:\s*(\d{1,2})초)?/,
+    /(\d{4})년\s*(\d{1,2})월\s*(\d{1,2})일\s*(?:오전|오후)?\s*(\d{1,2})[:시]\s*(\d{1,2})(?:분|\b)(?:\s*(\d{1,2})초)?/,
+    /(\d{4})[.-]\s*(\d{1,2})[.-]\s*(\d{1,2})\s+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?/,
+  ];
+  for (const pattern of patterns) {
+    const match = normalized.match(pattern);
+    if (match) {
+      let hour = Number(match[4]);
+      if (/오후/.test(normalized) && hour < 12) hour += 12;
+      if (/오전/.test(normalized) && hour === 12) hour = 0;
+      return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]), hour, Number(match[5]), Number(match[6] || 0));
+    }
   }
   const fallback = new Date(text);
   return Number.isNaN(fallback.getTime()) ? new Date(0) : fallback;
@@ -721,17 +732,22 @@ function sortByRecent(a, b) {
   return parseDealDate(b).getTime() - parseDealDate(a).getTime();
 }
 
+function sortForCurrentFilter(items) {
+  if (["priority", "urgent", "soon"].includes(state.filter)) return items.sort(sortByPriority);
+  return items.sort(sortByRecent);
+}
+
 function filteredDeals() {
   const query = state.query.trim().toLowerCase();
-  return deals
+  const items = deals
     .filter((deal) => {
       const priority = dealPriority(deal);
       const matchesFilter = dealMatchesFilter(deal, state.filter);
       const haystack =
         `${deal.advertiser} ${deal.contact} ${deal.brand} ${deal.statusLabel} ${deal.oneLine} ${priority.label}`.toLowerCase();
       return matchesFilter && (!query || haystack.includes(query));
-    })
-    .sort(["priority", "urgent", "soon"].includes(state.filter) ? sortByPriority : sortByRecent);
+    });
+  return sortForCurrentFilter(items);
 }
 
 function renderSummary() {
