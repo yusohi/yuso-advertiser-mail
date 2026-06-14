@@ -401,6 +401,22 @@ function storedMessageText(message: JsonMap | undefined) {
   return String(message?.body || "").replace(/\s+/g, " ").trim();
 }
 
+function compactMailBody(body = "") {
+  const text = String(body || "");
+  const max = 20_000;
+  if (text.length <= max) return text;
+  return `${text.slice(0, max).trim()}\n\n[메일 본문이 길어 일부만 저장했습니다. 전체 내용은 Gmail 원문에서 확인하세요.]`;
+}
+
+function compactDealForStorage(deal: MailDeal) {
+  const messages = storedMessages(deal).map((message) => ({
+    ...message,
+    body: compactMailBody(String(message?.body || "")),
+    attachments: Array.isArray(message?.attachments) ? message.attachments.slice(0, 4) : [],
+  }));
+  return { ...deal, messages };
+}
+
 function latestExternalStoredMessage(deal: MailDeal) {
   const messages = storedMessages(deal);
   return [...messages].reverse().find((message) => !/유소|yuso@wootso\.com|yuso/i.test(String(message?.from || ""))) ||
@@ -469,7 +485,7 @@ function cleanupDeals(deals: MailDeal[] = []) {
     const current = unique.get(key);
     unique.set(key, current ? betterStoredDeal(current, deal) : deal);
   }
-  return Array.from(unique.values()).sort((a, b) => storedDealDate(b).getTime() - storedDealDate(a).getTime());
+  return Array.from(unique.values()).map(compactDealForStorage).sort((a, b) => storedDealDate(b).getTime() - storedDealDate(a).getTime());
 }
 
 function isDeleted(payload: MailPayload, deal: MailDeal, latestDate: Date) {
@@ -580,7 +596,7 @@ async function dealFromThread(thread: JsonMap, accessToken: string): Promise<Mai
     messages.push({
       from: header(headers, "From"),
       date: messageDate(message),
-      body,
+      body: compactMailBody(body),
       attachments: [],
     });
   }
@@ -631,7 +647,7 @@ async function syncGmailNow() {
   const queries = [
     {
       q: "newer_than:45d -in:trash -in:spam",
-      pages: 2,
+      pages: 1,
       max: 30,
       labelIds: [YUSO_LABEL_ID],
     },
@@ -653,7 +669,7 @@ async function syncGmailNow() {
       { q: "from:jnhan@momentsco.com newer_than:180d -in:trash -in:spam", pages: 1, max: 20, labelIds: [YUSO_LABEL_ID] },
     );
   }
-  const threadLimit = needsBackfill ? 90 : 45;
+  const threadLimit = needsBackfill ? 70 : 30;
   const threadIds = new Set<string>();
   for (const query of queries) {
     for (const id of await gmailThreadIds(query.q, accessToken, query.pages, query.max, query.labelIds || [])) {
@@ -693,7 +709,7 @@ async function syncGmailNow() {
     updated.set(String(deal.id), previous ? betterStoredDeal(previous, deal) : deal);
   };
   await Promise.all(
-    Array.from({ length: Math.min(6, ids.length) }, async () => {
+    Array.from({ length: Math.min(8, ids.length) }, async () => {
       while (cursor < ids.length) {
         const id = ids[cursor++];
         await processThread(id);
