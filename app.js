@@ -1412,6 +1412,20 @@ async function boot() {
 }
 
 boot();
+
+let lastForegroundRefresh = 0;
+
+function refreshWhenForegrounded() {
+  if (!savedPassword() || document.hidden) return;
+  const now = Date.now();
+  if (now - lastForegroundRefresh < 10_000) return;
+  lastForegroundRefresh = now;
+  loadDeals();
+}
+
+document.addEventListener("visibilitychange", refreshWhenForegrounded);
+window.addEventListener("focus", refreshWhenForegrounded);
+
 setInterval(() => {
   loadDeals();
 }, 60_000);
