@@ -626,69 +626,86 @@ async function syncGmailNow() {
   const payload = await mailPayload();
   if (!payload || !Array.isArray(payload.deals)) throw new Error("data_not_found");
   const accessToken = await refreshAccessToken();
+  const existingDeals = cleanupDeals(payload.deals || []);
+  const needsBackfill = existingDeals.length < 20;
   const queries = [
     {
-      q: "newer_than:30d -in:trash -in:spam",
-      pages: 5,
-      max: 50,
-      labelIds: [YUSO_LABEL_ID],
-    },
-    {
-      q: "newer_than:180d -in:trash -in:spam (광고 OR 협업 OR 제안 OR PPL OR 브랜디드 OR 협찬 OR 캠페인 OR 제품 OR 촬영 OR 업로드 OR 기획안 OR 가이드 OR 계약 OR 견적 OR 광고비 OR partnership OR collaboration OR campaign OR sponsor)",
+      q: "newer_than:45d -in:trash -in:spam",
       pages: 2,
       max: 30,
       labelIds: [YUSO_LABEL_ID],
     },
-    {
-      q: "비플레인 newer_than:180d -in:trash -in:spam",
-      pages: 1,
-      max: 20,
-      labelIds: [YUSO_LABEL_ID],
-    },
-    { q: "from:jnhan@momentsco.com newer_than:180d -in:trash -in:spam", pages: 1, max: 20, labelIds: [YUSO_LABEL_ID] },
   ];
+  if (needsBackfill) {
+    queries.push(
+      {
+        q: "newer_than:180d -in:trash -in:spam (광고 OR 협업 OR 제안 OR PPL OR 브랜디드 OR 협찬 OR 캠페인 OR 제품 OR 촬영 OR 업로드 OR 기획안 OR 가이드 OR 계약 OR 견적 OR 광고비 OR partnership OR collaboration OR campaign OR sponsor)",
+        pages: 2,
+        max: 30,
+        labelIds: [YUSO_LABEL_ID],
+      },
+      {
+        q: "비플레인 newer_than:180d -in:trash -in:spam",
+        pages: 1,
+        max: 20,
+        labelIds: [YUSO_LABEL_ID],
+      },
+      { q: "from:jnhan@momentsco.com newer_than:180d -in:trash -in:spam", pages: 1, max: 20, labelIds: [YUSO_LABEL_ID] },
+    );
+  }
+  const threadLimit = needsBackfill ? 90 : 45;
   const threadIds = new Set<string>();
   for (const query of queries) {
     for (const id of await gmailThreadIds(query.q, accessToken, query.pages, query.max, query.labelIds || [])) {
       threadIds.add(id);
-      if (threadIds.size >= 120) break;
+      if (threadIds.size >= threadLimit) break;
     }
-    if (threadIds.size >= 120) break;
+    if (threadIds.size >= threadLimit) break;
   }
 
-  const updated = new Map<string, MailDeal>(cleanupDeals(payload.deals || []).map((deal) => [String(deal.id), deal]));
+  const updated = new Map<string, MailDeal>(existingDeals.map((deal) => [String(deal.id), deal]));
   let skippedDeleted = 0;
   let skippedNoise = 0;
   let added = 0;
   let changed = 0;
-  for (const id of threadIds) {
+  const ids = Array.from(threadIds);
+  let cursor = 0;
+  const processThread = async (id: string) => {
     const thread = await gmailJson(`threads/${id}?format=full`, accessToken);
     if (isNoiseThread(thread)) {
       skippedNoise++;
-      continue;
+      return;
     }
     const deal = await dealFromThread(thread, accessToken);
     if (!deal) {
       skippedNoise++;
-      continue;
+      return;
     }
     const targetMessages = messagesForTargetAccount(thread);
     const latestDate = gmailMessageDate(targetMessages[targetMessages.length - 1] || {});
     if (isDeleted(payload, deal, latestDate)) {
       skippedDeleted++;
-      continue;
+      return;
     }
     const previous = updated.get(String(deal.id));
     if (previous) changed++;
     else added++;
     updated.set(String(deal.id), previous ? betterStoredDeal(previous, deal) : deal);
-  }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(6, ids.length) }, async () => {
+      while (cursor < ids.length) {
+        const id = ids[cursor++];
+        await processThread(id);
+      }
+    }),
+  );
 
   payload.deals = cleanupDeals(Array.from(updated.values()));
   payload.source = "Gmail OAuth yuso@wootso.com only";
   payload.updatedAt = seoulNow();
   await updateMailPayload(payload);
-  return { ok: true, added, updated: changed, skippedDeleted, skippedNoise, finalCount: payload.deals.length, updatedAt: payload.updatedAt };
+  return { ok: true, added, updated: changed, skippedDeleted, skippedNoise, scanned: ids.length, finalCount: payload.deals.length, updatedAt: payload.updatedAt };
 }
 
 async function handlePost(req: Request, p: string) {
