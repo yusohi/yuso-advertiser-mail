@@ -412,7 +412,7 @@ function compactDealForStorage(deal: MailDeal) {
   const messages = storedMessages(deal).map((message) => ({
     ...message,
     body: compactMailBody(String(message?.body || "")),
-    attachments: Array.isArray(message?.attachments) ? message.attachments.slice(0, 4) : [],
+    attachments: [],
   }));
   return { ...deal, messages };
 }
