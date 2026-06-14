@@ -636,6 +636,21 @@ function isWootsoCompanyDeal(deal) {
   return /웃소|wootso/i.test(primaryText) && !/(유소|유소정|소정|yuso\.hi|yuso@wootso\.com)/i.test(primaryText);
 }
 
+function isAdvertisingDeal(deal) {
+  const latestExternal = latestExternalMessage(deal);
+  const text = [
+    deal?.advertiser,
+    deal?.contact,
+    deal?.brand,
+    deal?.oneLine,
+    deal?.nextAction,
+    currentMessageText(latestExternal).slice(0, 1200),
+  ].join(" ");
+  const blocked = /(mrbeastcollab\.sbs|grammarly manager shared|dropsend collaboration|이용권 만료|newsletter|notification|no-?reply)/i.test(text);
+  if (blocked) return false;
+  return /(광고|협업|제안|협찬|ppl|브랜디드|캠페인|제품.*제공|제품.*발송|촬영|업로드|기획안|가이드|계약|견적|광고비|브랜드|파트너십|릴스|쇼츠|유튜브|인스타|creator|influencer|partnership|collaboration|campaign|sponsor)/i.test(text);
+}
+
 function dealDedupeKey(deal) {
   const gmailThread = String(deal?.gmail || "").match(/#(?:all|inbox)\/([^/?#]+)/)?.[1] || "";
   if (gmailThread) return `gmail:${gmailThread}`;
@@ -662,6 +677,7 @@ function normalizeDeals(list = []) {
   const unique = new Map();
   for (const deal of Array.isArray(list) ? list : []) {
     if (!deal || isWootsoCompanyDeal(deal)) continue;
+    if (!isAdvertisingDeal(deal)) continue;
     const key = dealDedupeKey(deal);
     const current = unique.get(key);
     unique.set(key, current ? betterDeal(current, deal) : deal);

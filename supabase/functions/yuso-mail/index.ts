@@ -9,6 +9,7 @@ const REDIRECT_URI =
   "https://bsmfvlodkqyfawsppjno.supabase.co/functions/v1/yuso-mail/api/gmail/callback";
 const GMAIL_SCOPE = "https://www.googleapis.com/auth/gmail.readonly";
 const TARGET_EMAIL = "yuso@wootso.com";
+const YUSO_LABEL_ID = "Label_6487820566323359060";
 const enc = new TextEncoder();
 
 type JsonMap = Record<string, unknown>;
@@ -269,7 +270,7 @@ function isAdvertiserConversation(thread: JsonMap) {
     })
     .join("\n")
     .toLowerCase();
-  return /(광고|협업|제안|협찬|ppl|브랜디드|공동구매|캠페인|제품.*보내|제품.*제공|촬영|업로드|creator|influencer|partnership|collaboration|campaign|sponsor)/i.test(sample);
+  return /(광고|협업|제안|협찬|ppl|브랜디드|공동구매|캠페인|제품.*보내|제품.*제공|촬영|업로드|기획안|가이드|계약|견적|광고비|creator|influencer|partnership|collaboration|campaign|sponsor)/i.test(sample);
 }
 
 function isNoiseThread(thread: JsonMap) {
@@ -503,12 +504,13 @@ async function gmailJson(path: string, accessToken: string) {
   return data;
 }
 
-async function gmailThreadIds(q: string, accessToken: string, pageLimit = 2, maxResults = 50) {
+async function gmailThreadIds(q: string, accessToken: string, pageLimit = 2, maxResults = 50, labelIds: string[] = []) {
   const ids = new Set<string>();
   let pageToken = "";
   let page = 0;
   do {
     const params = new URLSearchParams({ q, maxResults: String(maxResults) });
+    for (const labelId of labelIds) params.append("labelIds", labelId);
     if (pageToken) params.set("pageToken", pageToken);
     const data = await gmailJson(`threads?${params.toString()}`, accessToken);
     for (const thread of data.threads || []) ids.add(String(thread.id));
@@ -609,28 +611,27 @@ async function syncGmailNow() {
   if (!payload || !Array.isArray(payload.deals)) throw new Error("data_not_found");
   const accessToken = await refreshAccessToken();
   const queries = [
-    { q: `to:${TARGET_EMAIL} newer_than:14d -in:trash -in:spam`, pages: 1, max: 25 },
-    { q: `cc:${TARGET_EMAIL} newer_than:14d -in:trash -in:spam`, pages: 1, max: 25 },
-    { q: `deliveredto:${TARGET_EMAIL} newer_than:14d -in:trash -in:spam`, pages: 1, max: 25 },
     {
-      q: `to:${TARGET_EMAIL} newer_than:120d -in:trash -in:spam (광고 OR 협업 OR 제안 OR PPL OR 브랜디드 OR 공동구매 OR 협찬 OR partnership OR collaboration OR campaign OR creator OR influencer OR sponsor)`,
-      pages: 2,
+      q: "newer_than:180d -in:trash -in:spam (광고 OR 협업 OR 제안 OR PPL OR 브랜디드 OR 협찬 OR 캠페인 OR 제품 OR 촬영 OR 업로드 OR 기획안 OR 가이드 OR 계약 OR 견적 OR 광고비 OR partnership OR collaboration OR campaign OR sponsor)",
+      pages: 4,
       max: 50,
+      labelIds: [YUSO_LABEL_ID],
     },
     {
-      q: `cc:${TARGET_EMAIL} newer_than:120d -in:trash -in:spam (광고 OR 협업 OR 제안 OR PPL OR 브랜디드 OR 공동구매 OR 협찬 OR partnership OR collaboration OR campaign OR creator OR influencer OR sponsor)`,
+      q: "비플레인 newer_than:180d -in:trash -in:spam",
       pages: 2,
-      max: 50,
+      max: 25,
+      labelIds: [YUSO_LABEL_ID],
     },
-    { q: `to:${TARGET_EMAIL} from:jnhan@momentsco.com`, pages: 1, max: 25 },
+    { q: "from:jnhan@momentsco.com newer_than:180d -in:trash -in:spam", pages: 2, max: 25, labelIds: [YUSO_LABEL_ID] },
   ];
   const threadIds = new Set<string>();
   for (const query of queries) {
-    for (const id of await gmailThreadIds(query.q, accessToken, query.pages, query.max)) {
+    for (const id of await gmailThreadIds(query.q, accessToken, query.pages, query.max, query.labelIds || [])) {
       threadIds.add(id);
-      if (threadIds.size >= 90) break;
+      if (threadIds.size >= 140) break;
     }
-    if (threadIds.size >= 90) break;
+    if (threadIds.size >= 140) break;
   }
 
   const updated = new Map<string, MailDeal>(cleanupDeals(payload.deals || []).map((deal) => [String(deal.id), deal]));
@@ -655,9 +656,10 @@ async function syncGmailNow() {
       skippedDeleted++;
       continue;
     }
-    if (updated.has(String(deal.id))) changed++;
+    const previous = updated.get(String(deal.id));
+    if (previous) changed++;
     else added++;
-    updated.set(String(deal.id), { ...(updated.get(String(deal.id)) || {}), ...deal });
+    updated.set(String(deal.id), previous ? betterStoredDeal(previous, deal) : deal);
   }
 
   payload.deals = cleanupDeals(Array.from(updated.values()));
