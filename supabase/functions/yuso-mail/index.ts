@@ -403,7 +403,7 @@ function storedMessageText(message: JsonMap | undefined) {
 
 function compactMailBody(body = "") {
   const text = String(body || "");
-  const max = 20_000;
+  const max = 6_000;
   if (text.length <= max) return text;
   return `${text.slice(0, max).trim()}\n\n[메일 본문이 길어 일부만 저장했습니다. 전체 내용은 Gmail 원문에서 확인하세요.]`;
 }
