@@ -419,6 +419,20 @@ function isWootsoCompanyDeal(deal: MailDeal) {
   return /웃소|wootso/i.test(primaryText) && !/(유소|유소정|소정|yuso\.hi|yuso@wootso\.com)/i.test(primaryText);
 }
 
+function isStoredAdvertisingDeal(deal: MailDeal) {
+  const latestExternal = latestExternalStoredMessage(deal);
+  const text = [
+    deal.advertiser,
+    deal.contact,
+    deal.brand,
+    deal.oneLine,
+    deal.nextAction,
+    storedMessageText(latestExternal).slice(0, 1200),
+  ].join(" ");
+  if (/(mrbeastcollab\.sbs|grammarly manager shared|dropsend collaboration|이용권 만료|newsletter|notification|no-?reply)/i.test(text)) return false;
+  return /(광고|협업|제안|협찬|ppl|브랜디드|캠페인|제품.*제공|제품.*발송|촬영|업로드|기획안|가이드|계약|견적|광고비|브랜드|파트너십|릴스|쇼츠|유튜브|인스타|creator|influencer|partnership|collaboration|campaign|sponsor)/i.test(text);
+}
+
 function storedDealDate(deal: MailDeal) {
   return iso(deal.lastTouchIso || deal.updatedAtIso || deal.lastTouch);
 }
@@ -449,6 +463,7 @@ function cleanupDeals(deals: MailDeal[] = []) {
   const unique = new Map<string, MailDeal>();
   for (const deal of Array.isArray(deals) ? deals : []) {
     if (!deal || isWootsoCompanyDeal(deal)) continue;
+    if (!isStoredAdvertisingDeal(deal)) continue;
     const key = storedDealDedupeKey(deal);
     const current = unique.get(key);
     unique.set(key, current ? betterStoredDeal(current, deal) : deal);
@@ -565,7 +580,7 @@ async function dealFromThread(thread: JsonMap, accessToken: string): Promise<Mai
       from: header(headers, "From"),
       date: messageDate(message),
       body,
-      attachments: messageId ? await imageAttachmentsFromPayload(messageId, payload, accessToken) : [],
+      attachments: [],
     });
   }
   const last = messages[messages.length - 1] || {};
@@ -613,25 +628,25 @@ async function syncGmailNow() {
   const queries = [
     {
       q: "newer_than:180d -in:trash -in:spam (광고 OR 협업 OR 제안 OR PPL OR 브랜디드 OR 협찬 OR 캠페인 OR 제품 OR 촬영 OR 업로드 OR 기획안 OR 가이드 OR 계약 OR 견적 OR 광고비 OR partnership OR collaboration OR campaign OR sponsor)",
-      pages: 4,
-      max: 50,
+      pages: 2,
+      max: 30,
       labelIds: [YUSO_LABEL_ID],
     },
     {
       q: "비플레인 newer_than:180d -in:trash -in:spam",
-      pages: 2,
-      max: 25,
+      pages: 1,
+      max: 20,
       labelIds: [YUSO_LABEL_ID],
     },
-    { q: "from:jnhan@momentsco.com newer_than:180d -in:trash -in:spam", pages: 2, max: 25, labelIds: [YUSO_LABEL_ID] },
+    { q: "from:jnhan@momentsco.com newer_than:180d -in:trash -in:spam", pages: 1, max: 20, labelIds: [YUSO_LABEL_ID] },
   ];
   const threadIds = new Set<string>();
   for (const query of queries) {
     for (const id of await gmailThreadIds(query.q, accessToken, query.pages, query.max, query.labelIds || [])) {
       threadIds.add(id);
-      if (threadIds.size >= 140) break;
+      if (threadIds.size >= 70) break;
     }
-    if (threadIds.size >= 140) break;
+    if (threadIds.size >= 70) break;
   }
 
   const updated = new Map<string, MailDeal>(cleanupDeals(payload.deals || []).map((deal) => [String(deal.id), deal]));
