@@ -1237,16 +1237,116 @@ body.compact.desktop-detail-open .dashboard {
 }
 
 @media (min-width: 981px) {
+  .mail-surface {
+    width: min(100%, 1120px);
+    margin: 0 auto;
+    transition:
+      width 280ms cubic-bezier(0.2, 0, 0, 1),
+      max-width 280ms cubic-bezier(0.2, 0, 0, 1);
+  }
+
+  body.desktop-detail-open .mail-surface {
+    width: min(100%, 1320px);
+  }
+
+  .dashboard,
+  body.compact .dashboard,
+  body.desktop-detail-open .dashboard,
+  body.compact.desktop-detail-open .dashboard {
+    display: block;
+    height: calc(100vh - 166px);
+  }
+
+  .deal-list {
+    height: 100%;
+    border-right: 0;
+  }
+
+  .deal-row {
+    grid-template-columns: 1fr 48px;
+  }
+
+  .deal-button {
+    grid-template-columns: 56px minmax(0, 1fr);
+    gap: 16px;
+    min-height: 112px;
+    padding: 18px 18px 16px 24px;
+  }
+
+  .deal-avatar {
+    width: 54px;
+    height: 54px;
+    font-size: 17px;
+  }
+
+  .deal-title strong {
+    font-size: 18px;
+  }
+
+  .deal-action {
+    font-size: 14px;
+  }
+
+  .deal-preview {
+    font-size: 14px;
+  }
+
+  .delete-deal {
+    width: 48px;
+  }
+
+  .detail {
+    display: none;
+    height: 100%;
+    padding: 0;
+    background: #fff;
+  }
+
+  body.desktop-detail-open .deal-list {
+    display: none;
+  }
+
   body.desktop-detail-open .detail {
-    background: linear-gradient(90deg, rgba(248, 250, 253, 0.72), #fff 120px);
+    display: block;
+    overflow: auto;
   }
 
   body.desktop-detail-animating .detail-panel {
     animation: detailEnter 300ms cubic-bezier(0.2, 0, 0, 1) both;
   }
 
+  .detail-panel {
+    padding: 28px 38px 38px;
+  }
+
   body.desktop-detail-open .detail-panel {
     max-width: 1240px;
+  }
+
+  body.desktop-detail-open .detail-head {
+    display: grid;
+    grid-template-columns: 46px minmax(0, 1fr) auto;
+    align-items: start;
+  }
+
+  body.desktop-detail-open .mobile-back-button {
+    display: grid;
+    place-items: center;
+    width: 42px;
+    height: 42px;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: #3c4043;
+    font-size: 38px;
+    line-height: 1;
+    cursor: pointer;
+  }
+
+  body.desktop-detail-open .mobile-back-button:hover,
+  body.desktop-detail-open .mobile-back-button:focus {
+    background: var(--hover);
+    outline: 0;
   }
 
   body.desktop-detail-open .section {

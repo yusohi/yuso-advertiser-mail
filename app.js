@@ -492,8 +492,18 @@ function openDesktopDetail() {
   }, 320);
 }
 
+function closeDesktopDetail() {
+  document.body.classList.remove("desktop-detail-open", "desktop-detail-animating");
+  document.querySelector(".deal-list")?.scrollTo({ top: 0, behavior: "smooth" });
+}
+
 function closeMobileDetail() {
   document.body.classList.remove("mobile-detail-open");
+}
+
+function closeDetailView() {
+  closeMobileDetail();
+  closeDesktopDetail();
 }
 
 function openAccountPanel() {
@@ -1046,12 +1056,13 @@ document.addEventListener("click", (event) => {
   if (filterButton) {
     state.filter = filterButton.dataset.filter;
     document.body.classList.remove("mobile-drawer-open");
+    closeDesktopDetail();
     render();
     return;
   }
 
   if (event.target.closest("[data-mobile-back]")) {
-    closeMobileDetail();
+    closeDetailView();
     return;
   }
 
@@ -1115,6 +1126,7 @@ document.addEventListener("click", (event) => {
 
 $("#searchInput").addEventListener("input", (event) => {
   state.query = event.target.value;
+  closeDesktopDetail();
   renderList();
   renderDetail();
 });
@@ -1133,6 +1145,7 @@ $("#profileButton").addEventListener("click", (event) => {
 $("#logoutButton").addEventListener("click", () => {
   localStorage.removeItem(PASSWORD_KEY);
   closeAccountPanel();
+  closeDetailView();
   deals = [];
   state.selectedId = "";
   render();
