@@ -8,6 +8,7 @@ const REDIRECT_URI =
   Deno.env.get("GMAIL_REDIRECT_URI") ||
   "https://bsmfvlodkqyfawsppjno.supabase.co/functions/v1/yuso-mail/api/gmail/callback";
 const GMAIL_SCOPE = "https://www.googleapis.com/auth/gmail.readonly";
+const TARGET_EMAIL = "yuso@wootso.com";
 const enc = new TextEncoder();
 
 type JsonMap = Record<string, unknown>;
@@ -162,6 +163,34 @@ function header(headers: JsonMap[] | undefined, name: string) {
   return String(headers?.find((item) => String(item.name || "").toLowerCase() === name.toLowerCase())?.value || "");
 }
 
+function headerBlob(headers: JsonMap[] | undefined, names: string[]) {
+  return names.map((name) => header(headers, name)).filter(Boolean).join(" ").toLowerCase();
+}
+
+function messageHeaders(message: JsonMap) {
+  return (message.payload as JsonMap | undefined)?.headers as JsonMap[] | undefined;
+}
+
+function messageHasTargetAccount(message: JsonMap) {
+  const headers = messageHeaders(message);
+  const accountHeaders = headerBlob(headers, [
+    "From",
+    "To",
+    "Cc",
+    "Bcc",
+    "Delivered-To",
+    "X-Original-To",
+    "X-Forwarded-To",
+    "Envelope-To",
+    "Return-Path",
+  ]);
+  return accountHeaders.includes(TARGET_EMAIL);
+}
+
+function messagesForTargetAccount(thread: JsonMap) {
+  return ((thread.messages as JsonMap[] | undefined) || []).filter(messageHasTargetAccount);
+}
+
 function decodeHtmlEntities(value = "") {
   const named: Record<string, string> = {
     amp: "&",
@@ -220,17 +249,17 @@ function bodyFromPayload(payload: JsonMap | undefined): string {
 }
 
 function threadHeaders(thread: JsonMap) {
-  const messages = (thread.messages as JsonMap[] | undefined) || [];
+  const messages = messagesForTargetAccount(thread);
   const first = messages[0] || {};
   const latest = messages[messages.length - 1] || first;
   return {
-    first: (first.payload as JsonMap | undefined)?.headers as JsonMap[] | undefined,
-    latest: (latest.payload as JsonMap | undefined)?.headers as JsonMap[] | undefined,
+    first: messageHeaders(first),
+    latest: messageHeaders(latest),
   };
 }
 
 function isAdvertiserConversation(thread: JsonMap) {
-  const messages = (thread.messages as JsonMap[] | undefined) || [];
+  const messages = messagesForTargetAccount(thread);
   const sample = messages
     .slice(-3)
     .map((message) => {
@@ -244,7 +273,8 @@ function isAdvertiserConversation(thread: JsonMap) {
 }
 
 function isNoiseThread(thread: JsonMap) {
-  const messages = (thread.messages as JsonMap[] | undefined) || [];
+  const messages = messagesForTargetAccount(thread);
+  if (!messages.length) return true;
   const latest = messages[messages.length - 1] || {};
   const labels = Array.isArray(latest.labelIds) ? latest.labelIds.map(String) : [];
   if (labels.some((label) => ["SPAM", "TRASH"].includes(label))) return true;
@@ -275,12 +305,18 @@ function priorityForDeal(needsReply: boolean, latestDate: Date, text = "") {
   if (!needsReply) return { priorityScore: 10, priorityLevel: "waiting", priorityLabel: "대기" };
   const ageHours = Math.max(0, (Date.now() - latestDate.getTime()) / 36e5);
   const clean = text.toLowerCase();
-  let score = 50;
+  const purchaseRequest = /(공구|공동구매|구매\s*요청|판매\s*요청|마켓|스토어|커머스|affiliate|sales|reseller)/i.test(clean);
+  const activeDeal = /(진행|계약|서명|촬영|업로드|일정|주소|배송|제품\s*발송|시딩|견적|광고비|비용|세금계산서|입금|확정|승인|컨펌)/i.test(clean);
+  const asksReply = /(답장|회신|확인\s*부탁|검토\s*부탁|가능하실까요|어떠실까요|의견|전달\s*부탁|문의|요청|reply|respond|confirm|check)/i.test(clean);
+  const urgent = /(마감|오늘|내일|금일|이번\s*주|급|빠르게|리마인드|reminder|urgent|asap|deadline)/i.test(clean);
+  let score = 45;
   if (ageHours >= 72) score += 28;
   else if (ageHours >= 24) score += 18;
   else if (ageHours >= 8) score += 8;
-  if (/(마감|오늘|내일|금일|이번\s*주|급|빠르게|확인\s*부탁|리마인드|reminder|urgent|asap|deadline)/i.test(clean)) score += 24;
-  if (/(계약|비용|광고비|단가|견적|입금|세금계산서|vat|배송지|주소|촬영|업로드|일정)/i.test(clean)) score += 12;
+  if (activeDeal) score += 24;
+  if (urgent) score += 22;
+  if (asksReply) score += 16;
+  if (purchaseRequest) score = Math.min(score - 30, 45);
   if (/(감사합니다|확인했습니다|전달드렸|보내드렸)/i.test(clean)) score -= 8;
   if (score >= 82) return { priorityScore: score, priorityLevel: "urgent", priorityLabel: "빨리 답장" };
   if (score >= 62) return { priorityScore: score, priorityLevel: "soon", priorityLabel: "오늘 확인" };
@@ -303,10 +339,9 @@ function gmailMessageDate(message: JsonMap) {
 }
 
 function dealIdFromThread(thread: JsonMap) {
-  const messages = (thread.messages as JsonMap[] | undefined) || [];
+  const messages = messagesForTargetAccount(thread);
   const first = messages[0] || {};
-  const payload = first.payload as JsonMap | undefined;
-  const headers = payload?.headers as JsonMap[] | undefined;
+  const headers = messageHeaders(first);
   const from = header(headers, "From").toLowerCase();
   const subject = header(headers, "Subject").toLowerCase();
   if (from.includes("momentsco") || subject.includes("비플레인")) return "beplain";
@@ -324,8 +359,10 @@ function dealIdFromThread(thread: JsonMap) {
 }
 
 function senderEmail(thread: JsonMap) {
-  const first = ((thread.messages as JsonMap[] | undefined) || [])[0] || {};
-  const headers = (first.payload as JsonMap | undefined)?.headers as JsonMap[] | undefined;
+  const messages = messagesForTargetAccount(thread);
+  const firstFromAdvertiser = messages.find((message) => !/유소|yuso@wootso\.com/i.test(header(messageHeaders(message), "From")));
+  const first = firstFromAdvertiser || messages[0] || {};
+  const headers = messageHeaders(first);
   return header(headers, "From");
 }
 
@@ -440,9 +477,11 @@ async function imageAttachmentsFromPayload(messageId: string, payload: JsonMap |
   return out;
 }
 
-async function dealFromThread(thread: JsonMap, accessToken: string): Promise<MailDeal> {
+async function dealFromThread(thread: JsonMap, accessToken: string): Promise<MailDeal | undefined> {
   const messages: JsonMap[] = [];
-  for (const message of ((thread.messages as JsonMap[] | undefined) || [])) {
+  const targetMessages = messagesForTargetAccount(thread);
+  if (!targetMessages.length) return undefined;
+  for (const message of targetMessages) {
     const payload = message.payload as JsonMap | undefined;
     const headers = payload?.headers as JsonMap[] | undefined;
     const body = bodyFromPayload(payload);
@@ -456,16 +495,16 @@ async function dealFromThread(thread: JsonMap, accessToken: string): Promise<Mai
     });
   }
   const last = messages[messages.length - 1] || {};
-  const first = ((thread.messages as JsonMap[] | undefined) || [])[0] || {};
-  const headers = (first.payload as JsonMap | undefined)?.headers as JsonMap[] | undefined;
+  if (!messages.length) return undefined;
+  const first = targetMessages[0] || {};
+  const headers = messageHeaders(first);
   const subject = header(headers, "Subject");
   const id = dealIdFromThread(thread);
   const advertiser = advertiserFromThread(thread);
   const email = senderEmail(thread).match(/<([^>]+)>/)?.[1] || senderEmail(thread);
   const latestFrom = String(last.from || "");
   const needsReply = !/유소|yuso@wootso\.com/i.test(latestFrom);
-  const threadMessages = Array.isArray(thread.messages) ? thread.messages as JsonMap[] : [];
-  const latestDate = gmailMessageDate(threadMessages[threadMessages.length - 1] || {});
+  const latestDate = gmailMessageDate(targetMessages[targetMessages.length - 1] || {});
   const latestText = String(last.body || "");
   const priority = priorityForDeal(needsReply, latestDate, latestText);
 
@@ -482,7 +521,7 @@ async function dealFromThread(thread: JsonMap, accessToken: string): Promise<Mai
     deadline: "Gmail 원문 확인 필요",
     lastTouch: String(last.date || seoulNow()),
     lastTouchIso: latestDate.toISOString(),
-    account: "yuso@wootso.com",
+    account: TARGET_EMAIL,
     oneLine: `${advertiser} thread의 최신 Gmail 원문이 동기화되었습니다.`,
     nextAction: needsReply ? "최신 메일 원문을 확인하고 답장 여부를 결정." : "상대 답장 대기.",
     ...priority,
@@ -498,20 +537,20 @@ async function syncGmailNow() {
   if (!payload || !Array.isArray(payload.deals)) throw new Error("data_not_found");
   const accessToken = await refreshAccessToken();
   const queries = [
-    { q: "to:yuso@wootso.com newer_than:14d -in:trash -in:spam", pages: 1, max: 25 },
-    { q: "cc:yuso@wootso.com newer_than:14d -in:trash -in:spam", pages: 1, max: 25 },
-    { q: "deliveredto:yuso@wootso.com newer_than:14d -in:trash -in:spam", pages: 1, max: 25 },
+    { q: `to:${TARGET_EMAIL} newer_than:14d -in:trash -in:spam`, pages: 1, max: 25 },
+    { q: `cc:${TARGET_EMAIL} newer_than:14d -in:trash -in:spam`, pages: 1, max: 25 },
+    { q: `deliveredto:${TARGET_EMAIL} newer_than:14d -in:trash -in:spam`, pages: 1, max: 25 },
     {
-      q: "to:yuso@wootso.com newer_than:120d -in:trash -in:spam (광고 OR 협업 OR 제안 OR PPL OR 브랜디드 OR 공동구매 OR 협찬 OR partnership OR collaboration OR campaign OR creator OR influencer OR sponsor)",
+      q: `to:${TARGET_EMAIL} newer_than:120d -in:trash -in:spam (광고 OR 협업 OR 제안 OR PPL OR 브랜디드 OR 공동구매 OR 협찬 OR partnership OR collaboration OR campaign OR creator OR influencer OR sponsor)`,
       pages: 2,
       max: 50,
     },
     {
-      q: "cc:yuso@wootso.com newer_than:120d -in:trash -in:spam (광고 OR 협업 OR 제안 OR PPL OR 브랜디드 OR 공동구매 OR 협찬 OR partnership OR collaboration OR campaign OR creator OR influencer OR sponsor)",
+      q: `cc:${TARGET_EMAIL} newer_than:120d -in:trash -in:spam (광고 OR 협업 OR 제안 OR PPL OR 브랜디드 OR 공동구매 OR 협찬 OR partnership OR collaboration OR campaign OR creator OR influencer OR sponsor)`,
       pages: 2,
       max: 50,
     },
-    { q: "to:yuso@wootso.com from:jnhan@momentsco.com", pages: 1, max: 25 },
+    { q: `to:${TARGET_EMAIL} from:jnhan@momentsco.com`, pages: 1, max: 25 },
   ];
   const threadIds = new Set<string>();
   for (const query of queries) {
@@ -534,8 +573,12 @@ async function syncGmailNow() {
       continue;
     }
     const deal = await dealFromThread(thread, accessToken);
-    const threadMessages = Array.isArray(thread.messages) ? thread.messages as JsonMap[] : [];
-    const latestDate = gmailMessageDate(threadMessages[threadMessages.length - 1] || {});
+    if (!deal) {
+      skippedNoise++;
+      continue;
+    }
+    const targetMessages = messagesForTargetAccount(thread);
+    const latestDate = gmailMessageDate(targetMessages[targetMessages.length - 1] || {});
     if (isDeleted(payload, deal, latestDate)) {
       skippedDeleted++;
       continue;

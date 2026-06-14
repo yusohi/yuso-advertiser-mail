@@ -596,30 +596,46 @@ function parseDealDate(deal) {
   return Number.isNaN(fallback.getTime()) ? new Date(0) : fallback;
 }
 
+function priorityTextForDeal(deal) {
+  const messages = Array.isArray(deal.messages) ? deal.messages : fallbackMessages(deal);
+  const latest = messages[messages.length - 1] || {};
+  return `${currentMessageText(latest)} ${deal?.brand || ""} ${deal?.oneLine || ""} ${deal?.nextAction || ""}`;
+}
+
+function isPurchaseRequest(text = "") {
+  return /(공구|공동구매|구매\s*요청|판매\s*요청|마켓|스토어|커머스|affiliate|sales|reseller)/i.test(String(text));
+}
+
 function dealPriority(deal) {
   const savedScore = Number(deal?.priorityScore || 0);
   const savedLevel = String(deal?.priorityLevel || "");
+  const text = priorityTextForDeal(deal);
+  const purchasePenalty = isPurchaseRequest(text) ? 30 : 0;
   if (savedScore && savedLevel) {
+    const score = isPurchaseRequest(text) ? Math.min(Math.max(0, savedScore - purchasePenalty), 45) : savedScore;
+    const level = score >= 82 ? "urgent" : score >= 62 ? "soon" : savedLevel === "waiting" ? "waiting" : "normal";
     return {
-      score: savedScore,
-      level: savedLevel,
-      label: deal.priorityLabel || (savedLevel === "urgent" ? "빨리 답장" : savedLevel === "soon" ? "오늘 확인" : "일반 확인"),
+      score,
+      level,
+      label: level === "urgent" ? "빨리 답장" : level === "soon" ? "오늘 확인" : level === "waiting" ? "대기" : "일반 확인",
     };
   }
 
   if (deal?.status !== "reply") {
     return { score: 10, level: "waiting", label: "대기" };
   }
-  const messages = Array.isArray(deal.messages) ? deal.messages : fallbackMessages(deal);
-  const latest = messages[messages.length - 1] || {};
-  const text = currentMessageText(latest);
   const ageHours = Math.max(0, (Date.now() - parseDealDate(deal).getTime()) / 36e5);
-  let score = 50;
+  const activeDeal = /(진행|계약|서명|촬영|업로드|일정|주소|배송|제품\s*발송|시딩|견적|광고비|비용|세금계산서|입금|확정|승인|컨펌)/i.test(text);
+  const asksReply = /(답장|회신|확인\s*부탁|검토\s*부탁|가능하실까요|어떠실까요|의견|전달\s*부탁|문의|요청|reply|respond|confirm|check)/i.test(text);
+  const urgent = /(마감|오늘|내일|금일|이번\s*주|급|빠르게|리마인드|reminder|urgent|asap|deadline)/i.test(text);
+  let score = 45;
   if (ageHours >= 72) score += 28;
   else if (ageHours >= 24) score += 18;
   else if (ageHours >= 8) score += 8;
-  if (/(마감|오늘|내일|금일|이번\s*주|급|빠르게|확인\s*부탁|리마인드|reminder|urgent|asap|deadline)/i.test(text)) score += 24;
-  if (/(계약|비용|광고비|단가|견적|입금|세금계산서|vat|배송지|주소|촬영|업로드|일정)/i.test(text)) score += 12;
+  if (activeDeal) score += 24;
+  if (urgent) score += 22;
+  if (asksReply) score += 16;
+  if (isPurchaseRequest(text)) score = Math.min(score - 30, 45);
   if (score >= 82) return { score, level: "urgent", label: "빨리 답장" };
   if (score >= 62) return { score, level: "soon", label: "오늘 확인" };
   return { score, level: "normal", label: "일반 확인" };
