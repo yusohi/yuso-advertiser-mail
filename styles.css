@@ -481,6 +481,13 @@ body.desktop-detail-open .dashboard {
   background: #fff;
 }
 
+.empty-list {
+  padding: 28px 20px;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1.5;
+}
+
 .deal-row {
   width: 100%;
   display: grid;

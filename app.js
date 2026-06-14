@@ -9,6 +9,7 @@ const GMAIL_SYNC_URL = "https://bsmfvlodkqyfawsppjno.supabase.co/functions/v1/yu
 const PASSWORD_KEY = "yuso-mail-password";
 const LAYOUT_KEY = "yuso-mail-layout";
 const GMAIL_AUTO_CONNECT_KEY = "yuso-mail-gmail-auto-connect-attempted";
+const PASSWORD_COOKIE_MAX_AGE = 60 * 60 * 24 * 30;
 
 const state = {
   selectedId: "",
@@ -37,6 +38,64 @@ const statusLabels = [
 ];
 
 const $ = (selector) => document.querySelector(selector);
+
+function storageGet(key) {
+  try {
+    return localStorage.getItem(key) || "";
+  } catch {
+    return "";
+  }
+}
+
+function storageSet(key, value) {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // Safari private or in-app sessions can reject localStorage.
+  }
+}
+
+function storageRemove(key) {
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    // Safari private or in-app sessions can reject localStorage.
+  }
+}
+
+function cookieGet(name) {
+  const encoded = `${encodeURIComponent(name)}=`;
+  return document.cookie
+    .split(";")
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(encoded))
+    ?.slice(encoded.length) || "";
+}
+
+function cookieSet(name, value, maxAge = PASSWORD_COOKIE_MAX_AGE) {
+  const secure = window.location.protocol === "https:" ? "; Secure" : "";
+  document.cookie = `${encodeURIComponent(name)}=${encodeURIComponent(value)}; Max-Age=${maxAge}; Path=/; SameSite=Lax${secure}`;
+}
+
+function cookieRemove(name) {
+  cookieSet(name, "", 0);
+}
+
+function savedPassword() {
+  const password = storageGet(PASSWORD_KEY) || decodeURIComponent(cookieGet(PASSWORD_KEY) || "");
+  if (password && !storageGet(PASSWORD_KEY)) storageSet(PASSWORD_KEY, password);
+  return password;
+}
+
+function savePassword(password) {
+  storageSet(PASSWORD_KEY, password);
+  cookieSet(PASSWORD_KEY, password);
+}
+
+function clearPassword() {
+  storageRemove(PASSWORD_KEY);
+  cookieRemove(PASSWORD_KEY);
+}
 
 function escapeAttr(value) {
   return String(value || "")
@@ -289,7 +348,7 @@ function renderMailAttachments(attachments = []) {
 }
 
 async function loadDeals({ manual = false } = {}) {
-  const password = localStorage.getItem(PASSWORD_KEY);
+  const password = savedPassword();
   if (!password) {
     showLogin();
     setLoading(false);
@@ -307,7 +366,7 @@ async function loadDeals({ manual = false } = {}) {
       body: JSON.stringify({ password }),
     });
     if (response.status === 401) {
-      localStorage.removeItem(PASSWORD_KEY);
+      clearPassword();
       showLogin("비밀번호가 맞지 않습니다.");
       return;
     }
@@ -335,7 +394,7 @@ async function loadDeals({ manual = false } = {}) {
 }
 
 async function postPrivate(url, body = {}) {
-  const password = localStorage.getItem(PASSWORD_KEY);
+  const password = savedPassword();
   if (!password) {
     showLogin();
     throw new Error("비밀번호가 필요합니다.");
@@ -349,7 +408,7 @@ async function postPrivate(url, body = {}) {
     body: JSON.stringify({ password, ...body }),
   });
   if (response.status === 401) {
-    localStorage.removeItem(PASSWORD_KEY);
+    clearPassword();
     showLogin("비밀번호가 맞지 않습니다.");
     throw new Error("unauthorized");
   }
@@ -372,7 +431,7 @@ async function refreshGmailStatus() {
   const status = $("#gmailStatus");
   const connectButton = $("#connectGmailButton");
   const syncButton = $("#syncGmailButton");
-  if (!localStorage.getItem(PASSWORD_KEY)) return;
+  if (!savedPassword()) return;
   try {
     const data = await postPrivate(GMAIL_STATUS_URL);
     state.gmailConfigured = Boolean(data.configured);
@@ -463,7 +522,7 @@ function hideLogin() {
 }
 
 function applyLayoutMode() {
-  const compact = localStorage.getItem(LAYOUT_KEY) === "compact";
+  const compact = storageGet(LAYOUT_KEY) === "compact";
   document.body.classList.toggle("compact", compact);
   const toggle = $("#layoutToggle");
   if (toggle) {
@@ -477,7 +536,7 @@ function toggleLayoutMode() {
     return;
   }
   const next = document.body.classList.contains("compact") ? "comfortable" : "compact";
-  localStorage.setItem(LAYOUT_KEY, next);
+  storageSet(LAYOUT_KEY, next);
   applyLayoutMode();
 }
 
@@ -528,11 +587,10 @@ function toggleAccountPanel() {
 }
 
 function openPasswordModal() {
-  const savedPassword = localStorage.getItem(PASSWORD_KEY) || "";
   $("#passwordModal").classList.remove("hidden");
   $("#passwordModal").setAttribute("aria-hidden", "false");
   $("#changePasswordError").textContent = "";
-  $("#currentPasswordInput").value = savedPassword;
+  $("#currentPasswordInput").value = savedPassword();
   $("#newPasswordInput").value = "";
   $("#confirmPasswordInput").value = "";
   $("#currentPasswordInput").focus();
@@ -566,7 +624,7 @@ async function changePassword(currentPassword, newPassword) {
 }
 
 async function deleteDeal(id) {
-  const password = localStorage.getItem(PASSWORD_KEY);
+  const password = savedPassword();
   if (!password) {
     showLogin();
     return;
@@ -581,7 +639,7 @@ async function deleteDeal(id) {
     body: JSON.stringify({ password, id }),
   });
   if (response.status === 401) {
-    localStorage.removeItem(PASSWORD_KEY);
+    clearPassword();
     showLogin("비밀번호가 맞지 않습니다.");
     throw new Error("unauthorized");
   }
@@ -796,6 +854,13 @@ function renderList() {
   }
 
   $("#resultCount").textContent = `${items.length}건`;
+  if (!items.length) {
+    const message = state.lastError
+      ? `${state.lastError}. 새로고침을 다시 눌러보세요.`
+      : "표시할 광고 메일이 없습니다.";
+    $("#dealList").innerHTML = `<div class="empty-list">${escapeHtml(message)}</div>`;
+    return;
+  }
   $("#dealList").innerHTML = items
     .map(
       (deal) => {
@@ -1254,7 +1319,7 @@ $("#profileButton").addEventListener("click", (event) => {
 });
 
 $("#logoutButton").addEventListener("click", () => {
-  localStorage.removeItem(PASSWORD_KEY);
+  clearPassword();
   closeAccountPanel();
   closeDetailView();
   deals = [];
@@ -1302,7 +1367,7 @@ $("#changePasswordForm").addEventListener("submit", async (event) => {
   error.textContent = "";
   try {
     await changePassword(currentPassword, newPassword);
-    localStorage.setItem(PASSWORD_KEY, newPassword);
+    savePassword(newPassword);
     closePasswordModal();
     showToast("비밀번호를 변경했습니다.");
     await loadDeals({ manual: true });
@@ -1317,7 +1382,7 @@ $("#loginForm").addEventListener("submit", async (event) => {
   event.preventDefault();
   const password = $("#passwordInput").value.trim();
   if (!password) return;
-  localStorage.setItem(PASSWORD_KEY, password);
+  savePassword(password);
   hideLogin();
   await loadDeals({ manual: true });
   await ensureGmailReady();
@@ -1325,9 +1390,15 @@ $("#loginForm").addEventListener("submit", async (event) => {
 
 registerServiceWorker();
 applyLayoutMode();
+if (savedPassword()) {
+  hideLogin();
+}
+closeDetailView();
 render();
 
 async function boot() {
+  closeDetailView();
+  state.filter = "all";
   await loadDeals();
   const params = new URLSearchParams(window.location.search);
   if (params.get("gmail") === "connected") {
