@@ -420,6 +420,7 @@ function isWootsoCompanyDeal(deal: MailDeal) {
 }
 
 function isStoredAdvertisingDeal(deal: MailDeal) {
+  if (!/^https:\/\/mail\.google\.com/i.test(String(deal.gmail || ""))) return false;
   const latestExternal = latestExternalStoredMessage(deal);
   const text = [
     deal.advertiser,
@@ -468,7 +469,7 @@ function cleanupDeals(deals: MailDeal[] = []) {
     const current = unique.get(key);
     unique.set(key, current ? betterStoredDeal(current, deal) : deal);
   }
-  return Array.from(unique.values());
+  return Array.from(unique.values()).sort((a, b) => storedDealDate(b).getTime() - storedDealDate(a).getTime());
 }
 
 function isDeleted(payload: MailPayload, deal: MailDeal, latestDate: Date) {

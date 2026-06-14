@@ -637,6 +637,7 @@ function isWootsoCompanyDeal(deal) {
 }
 
 function isAdvertisingDeal(deal) {
+  if (!/^https:\/\/mail\.google\.com/i.test(String(deal?.gmail || ""))) return false;
   const latestExternal = latestExternalMessage(deal);
   const text = [
     deal?.advertiser,
