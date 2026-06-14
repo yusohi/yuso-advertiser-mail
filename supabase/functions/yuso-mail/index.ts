@@ -431,7 +431,7 @@ function isStoredAdvertisingDeal(deal: MailDeal) {
     storedMessageText(latestExternal).slice(0, 1200),
   ].join(" ");
   if (/(mrbeastcollab\.sbs|grammarly manager shared|dropsend collaboration|이용권 만료|newsletter|notification|no-?reply|google events|eventsatgoogle|creator club|크리에이터 클럽|final reminder|초대합니다)/i.test(text)) return false;
-  return /(광고|협업|제안|협찬|ppl|브랜디드|캠페인|제품.*제공|제품.*발송|촬영|업로드|기획안|가이드|계약|견적|광고비|브랜드|파트너십|릴스|쇼츠|유튜브|인스타|creator|influencer|partnership|collaboration|campaign|sponsor)/i.test(text);
+  return true;
 }
 
 function storedDealDate(deal: MailDeal) {
@@ -628,6 +628,12 @@ async function syncGmailNow() {
   const accessToken = await refreshAccessToken();
   const queries = [
     {
+      q: "newer_than:30d -in:trash -in:spam",
+      pages: 5,
+      max: 50,
+      labelIds: [YUSO_LABEL_ID],
+    },
+    {
       q: "newer_than:180d -in:trash -in:spam (광고 OR 협업 OR 제안 OR PPL OR 브랜디드 OR 협찬 OR 캠페인 OR 제품 OR 촬영 OR 업로드 OR 기획안 OR 가이드 OR 계약 OR 견적 OR 광고비 OR partnership OR collaboration OR campaign OR sponsor)",
       pages: 2,
       max: 30,
@@ -645,9 +651,9 @@ async function syncGmailNow() {
   for (const query of queries) {
     for (const id of await gmailThreadIds(query.q, accessToken, query.pages, query.max, query.labelIds || [])) {
       threadIds.add(id);
-      if (threadIds.size >= 70) break;
+      if (threadIds.size >= 120) break;
     }
-    if (threadIds.size >= 70) break;
+    if (threadIds.size >= 120) break;
   }
 
   const updated = new Map<string, MailDeal>(cleanupDeals(payload.deals || []).map((deal) => [String(deal.id), deal]));

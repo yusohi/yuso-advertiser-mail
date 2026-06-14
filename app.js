@@ -707,7 +707,7 @@ function isAdvertisingDeal(deal) {
   ].join(" ");
   const blocked = /(mrbeastcollab\.sbs|grammarly manager shared|dropsend collaboration|이용권 만료|newsletter|notification|no-?reply|google events|eventsatgoogle|creator club|크리에이터 클럽|final reminder|초대합니다)/i.test(text);
   if (blocked) return false;
-  return /(광고|협업|제안|협찬|ppl|브랜디드|캠페인|제품.*제공|제품.*발송|촬영|업로드|기획안|가이드|계약|견적|광고비|브랜드|파트너십|릴스|쇼츠|유튜브|인스타|creator|influencer|partnership|collaboration|campaign|sponsor)/i.test(text);
+  return true;
 }
 
 function dealDedupeKey(deal) {
