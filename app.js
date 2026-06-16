@@ -1112,6 +1112,22 @@ function conversationSummaryFromLatest(messages, latestExternal, latestMine, lat
   return uniqueItems(items, 4);
 }
 
+function conversationSummaryAfterMyReply(messages, latestText = "") {
+  const firstText = currentMessageText(messages[0] || {});
+  const items = [];
+  if (latestText) items.push(`최근 내 답장: ${compactSummary(latestText, 96)}`);
+  items.push("현재: 내가 답장을 보냈고 상대 회신을 기다리는 상태");
+  if (/질문|궁금|확인|가능|사용법|권장|문의/.test(latestText)) {
+    items.push("확인 필요: 상대가 다음 답장에서 질문/조건에 답하면 그 내용 기준으로 업데이트");
+  }
+  if (/선물|제품.*보내|협업|광고|브랜드|캠페인|PPL/i.test(firstText)) {
+    items.push("시작: 브랜드가 제품 협업/광고 제안으로 연락을 시작함");
+  } else if (firstText && firstText !== latestText) {
+    items.push(`시작: ${compactSummary(firstText, 86)}`);
+  }
+  return uniqueItems(items, 4);
+}
+
 function formatScheduleDate(value = "") {
   return String(value || "")
     .replace(/\s+/g, " ")
@@ -1301,7 +1317,9 @@ function buildDealInsight(deal, messages) {
   const latestSummary = compactSummary(referenceText, 92);
   const need = lastFromMe ? "상대 답장을 기다리는 상태" : inferNeed(referenceText);
   const progress = progressFromLatest(referenceText, latestSender, lastFromMe, need);
-  const conversation = conversationSummaryFromLatest(usableMessages, latestExternal, latestMine, referenceText);
+  const conversation = lastFromMe
+    ? conversationSummaryAfterMyReply(usableMessages, latestText)
+    : conversationSummaryFromLatest(usableMessages, latestExternal, latestMine, referenceText);
   const nextSteps = lastFromMe
     ? ["새 회신이 오면 조건 변경 여부를 확인하기", "급한 건이면 2-3일 뒤 가볍게 리마인드하기"]
     : latestActionSteps(referenceText, need);
