@@ -823,7 +823,7 @@ body.desktop-detail-open .dashboard {
   padding-right: 4px;
 }
 
-.condition-list span {
+.condition-chip {
   display: inline-flex;
   align-items: center;
   max-width: 100%;
@@ -835,6 +835,22 @@ body.desktop-detail-open .dashboard {
   color: #3c4043;
   font-size: 13px;
   line-height: 1.35;
+  font-family: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.condition-chip:hover {
+  border-color: #1a73e8;
+  background: #edf4ff;
+  color: #174ea6;
+}
+
+.mail-message.source-highlight {
+  outline: 2px solid #1a73e8;
+  outline-offset: 3px;
+  border-radius: 12px;
+  background: #f1f7ff;
 }
 
 .draft {
@@ -1720,7 +1736,7 @@ body.compact.desktop-detail-open .dashboard {
     max-height: 96px;
   }
 
-  .condition-list span {
+  .condition-chip {
     font-size: 12px;
   }
 

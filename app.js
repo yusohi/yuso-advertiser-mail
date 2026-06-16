@@ -21,6 +21,7 @@ const state = {
   expandedMessages: new Set(),
   expandedQuotes: new Set(),
   rawMailOpen: new Set(),
+  highlightedMessage: "",
   gmailConfigured: false,
   gmailConnected: false,
 };
@@ -944,10 +945,11 @@ function compactSummary(text = "", length = 74) {
 function uniqueItems(items, limit = 6) {
   const seen = new Set();
   return items
-    .map((item) => String(item || "").trim())
+    .map((item) => (typeof item === "string" ? item.trim() : item))
     .filter((item) => {
-      const key = item.toLowerCase();
-      if (!item || seen.has(key)) return false;
+      const text = conditionText(item);
+      const key = text.toLowerCase();
+      if (!text || seen.has(key)) return false;
       seen.add(key);
       return true;
     })
@@ -1103,9 +1105,10 @@ function inferContentFormat(text = "") {
 
 function inferContractStatus(text = "") {
   const clean = normalizeVisibleMailText(text);
-  if (/계약서[^\n]{0,40}(작성\s*전|작성전|전임|아직|미작성)|작성\s*전[^\n]{0,20}계약서/.test(clean)) return "계약서 작성 전";
-  if (/계약서[^\n]{0,40}(작성|서명|날인|완료|체결)|(?:서명|날인|체결)[^\n]{0,30}계약서/.test(clean)) return "계약서 작성/서명 진행";
-  if (/계약|서명|날인/.test(clean)) return "계약서 확인 필요";
+  if (/계약서[^\n]{0,40}(작성\s*전|작성전|전임|아직|미작성)|작성\s*전[^\n]{0,20}계약서/.test(clean)) return "계약서 미작성";
+  if (/계약서[^\n]{0,40}(서명\s*완료|날인\s*완료|체결|완료)|(?:서명|날인|체결)[^\n]{0,30}(완료|되었습니다|했습니다)/.test(clean)) return "계약서 서명/체결 완료";
+  if (/계약서[^\n]{0,40}(작성|서명|날인|요청|전달)|(?:서명|날인)[^\n]{0,30}요청/.test(clean)) return "계약서 확인/서명 필요";
+  if (/계약|서명|날인/.test(clean)) return "계약서 여부 확인 필요";
   return "";
 }
 
@@ -1119,6 +1122,37 @@ function plausibleAmountText(matchText = "") {
   return "";
 }
 
+function conditionItem(text = "", messageIndex = -1) {
+  return { text: String(text || "").trim(), messageIndex };
+}
+
+function conditionText(item) {
+  return typeof item === "string" ? item : String(item?.text || "");
+}
+
+function findSourceMessageIndex(messages = [], patternOrText) {
+  if (!Array.isArray(messages) || !messages.length) return -1;
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const text = currentMessageText(messages[index]);
+    if (patternOrText instanceof RegExp) {
+      if (patternOrText.test(text)) return index;
+      patternOrText.lastIndex = 0;
+    } else if (patternOrText && text.includes(String(patternOrText).slice(0, 80))) {
+      return index;
+    }
+  }
+  return -1;
+}
+
+function latestMessageMatch(messages = [], pattern) {
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const text = currentMessageText(messages[index]);
+    const matches = [...text.matchAll(pattern)];
+    if (matches.length) return { match: matches[matches.length - 1], index };
+  }
+  return { match: latestMatch(messages.map(currentMessageText).join("\n"), pattern), index: -1 };
+}
+
 function extractDealTerms(messages = [], latestText = "", allText = "") {
   const cleanAll = normalizeVisibleMailText(allText);
   const cleanLatest = normalizeVisibleMailText(latestText);
@@ -1127,55 +1161,68 @@ function extractDealTerms(messages = [], latestText = "", allText = "") {
 
   const format = inferContentFormat(combined);
   const amountPattern = /(?:제품\s*\d+\s*(?:대|개)?\s*\+\s*)?(?:(?:광고비|비용|금액|협력\s*금액|진행|조건)[^\n]{0,24}?)?(?:\d{1,3}(?:,\d{3})*|\d+)\s*만\s*원?\s*(?:\(?\s*vat\s*(?:별도|포함)?\s*\)?)?|(?:제품\s*\d+\s*(?:대|개)?\s*\+\s*)?(?:\d{1,3}(?:,\d{3})*|\d+)\s*만원?\s*(?:\(?\s*vat\s*(?:별도|포함)?\s*\)?)?|(?:\d{1,3}(?:,\d{3})*|\d+)\s*원\s*(?:\(?\s*vat\s*(?:별도|포함)?\s*\)?)?|\$\s*(?:\d{1,3}(?:,\d{3})*|\d+)|(?:\d{2,4})\s*(?:vat|VAT)\s*(?:별도|포함)/g;
-  const amountMatches = [...combined.matchAll(amountPattern)]
-    .map((match) => plausibleAmountText(match[0]).replace(/\s+\)/g, ")"))
-    .filter(Boolean);
-  const amountText = amountMatches.length ? amountMatches[amountMatches.length - 1] : "";
-  if (format || amountText) items.push(`진행 조건: ${[format, amountText].filter(Boolean).join(" · ")}`);
+  const amountCandidates = messages.flatMap((message, index) => {
+    const text = currentMessageText(message);
+    return [...text.matchAll(amountPattern)]
+      .map((match) => ({ text: plausibleAmountText(match[0]).replace(/\s+\)/g, ")"), index }))
+      .filter((item) => item.text);
+  });
+  const amountText = amountCandidates.length ? amountCandidates[amountCandidates.length - 1].text : "";
+  const amountIndex = amountCandidates.length ? amountCandidates[amountCandidates.length - 1].index : -1;
+  if (format || amountText) {
+    const formatIndex = findSourceMessageIndex(messages, /브랜디드|브랜드\s*콘텐츠|기획\s*PPL|\bPPL\b|릴스|쇼츠|피드|블로그|공동구매|공구/i);
+    items.push(conditionItem(`진행 조건: ${[format, amountText].filter(Boolean).join(" · ")}`, amountIndex >= 0 ? amountIndex : formatIndex));
+  }
 
-  const uploadMatch = latestMatch(combined, /(?:업로드|게시|최종본\s*확인\s*및\s*업로드)[^\n]{0,26}?(\d{1,2}\s*월\s*\d{1,2}\s*일|\d{1,2}\/\d{1,2}|\d{4}[.\-]\s*\d{1,2}[.\-]\s*\d{1,2})|(?:\d{1,2}\s*월\s*\d{1,2}\s*일|\d{1,2}\/\d{1,2})[^\n]{0,18}(?:업로드|게시)/g);
-  if (uploadMatch) items.push(`업로드: ${formatScheduleDate(uploadMatch[0])}`);
+  const uploadFound = latestMessageMatch(messages, /(?:업로드|게시|최종본\s*확인\s*및\s*업로드)[^\n]{0,26}?(\d{1,2}\s*월\s*\d{1,2}\s*일|\d{1,2}\/\d{1,2}|\d{4}[.\-]\s*\d{1,2}[.\-]\s*\d{1,2})|(?:\d{1,2}\s*월\s*\d{1,2}\s*일|\d{1,2}\/\d{1,2})[^\n]{0,18}(?:업로드|게시)/g);
+  if (uploadFound.match) items.push(conditionItem(`업로드: ${formatScheduleDate(uploadFound.match[0])}`, uploadFound.index));
 
-  const exposureMatch = latestMatch(combined, /(?:초반\s*)?\d+\s*(?:~|-)?\s*\d*\s*분대?\s*노출|\d+\s*분\s*이상\s*노출|노출\s*희망[^\n]{0,24}/g);
-  if (exposureMatch) items.push(`노출: ${formatScheduleDate(exposureMatch[0])}`);
+  const exposureFound = latestMessageMatch(messages, /(?:초반\s*)?\d+\s*(?:~|-)?\s*\d*\s*분대?\s*노출|\d+\s*분\s*이상\s*노출|노출\s*희망[^\n]{0,24}/g);
+  if (exposureFound.match) items.push(conditionItem(`노출: ${formatScheduleDate(exposureFound.match[0])}`, exposureFound.index));
 
   const contractStatus = inferContractStatus(combined);
-  if (contractStatus) items.push(`계약서: ${contractStatus}`);
+  if (contractStatus) items.push(conditionItem(`계약서: ${contractStatus}`, findSourceMessageIndex(messages, /계약서|계약|서명|날인|동의서/)));
 
   const milestoneRules = [
     ["가이드", /(?:가이드|가이드라인)[^\n]{0,24}?(\d{1,2}\s*월\s*\d{1,2}\s*일|\d{1,2}\/\d{1,2}|전달|확인)/g],
-    ["기획안", /(?:기획안|콘티|원고)[^\n]{0,24}?(\d{1,2}\s*월\s*\d{1,2}\s*일|\d{1,2}\/\d{1,2}|전달|수정|코멘트|확인)/g],
-    ["초안", /(?:초안|가편집|1차본)[^\n]{0,24}?(\d{1,2}\s*월\s*\d{1,2}\s*일|\d{1,2}\/\d{1,2}|전달|수정|확인)/g],
-    ["최종본", /(?:최종본|최종\s*영상|최종)[^\n]{0,24}?(\d{1,2}\s*월\s*\d{1,2}\s*일|\d{1,2}\/\d{1,2}|전달|확인|업로드)/g],
+    ["기획안", /(?:기획안|콘티|원고)[^\n]{0,32}?(\d{1,2}\s*월\s*\d{1,2}\s*일|\d{1,2}\/\d{1,2}|전달|수정|코멘트|확인|작성|진행)/g],
   ];
   for (const [label, pattern] of milestoneRules) {
-    const match = latestMatch(combined, pattern);
-    if (match) items.push(`${label}: ${formatScheduleDate(match[0])}`);
+    const found = latestMessageMatch(messages, pattern);
+    if (!found.match) continue;
+    let text = formatScheduleDate(found.match[0]);
+    if (label === "기획안") {
+      if (/수정|코멘트|피드백/.test(text)) text = "수정 요청 확인 필요";
+      else if (/전달|작성/.test(text)) text = "작성/전달 진행 중";
+    }
+    items.push(conditionItem(`${label}: ${text}`, found.index));
   }
 
-  if (/촬영용\s*제품|제품.*받|제품.*수령/.test(combined)) items.push("제품: 촬영용 제품 수령 완료");
-  if (/주소[^\n]{0,20}(전달|확인)|기존.*주소|배송지.*전달/.test(combined)) items.push("배송: 주소 전달/확인 완료");
+  const productIndex = findSourceMessageIndex(messages, /촬영용\s*제품|제품.*받|제품.*수령/);
+  if (productIndex >= 0) items.push(conditionItem("제품: 촬영용 제품 수령 완료", productIndex));
+  const addressIndex = findSourceMessageIndex(messages, /주소[^\n]{0,20}(전달|확인)|기존.*주소|배송지.*전달/);
+  if (addressIndex >= 0) items.push(conditionItem("배송: 주소 전달/확인 완료", addressIndex));
 
-  return uniqueItems(items, 7);
+  return uniqueItems(items, 6);
 }
 
-function conditionSummaryFromLatest(latestText = "", allText = "", mineText = "") {
+function conditionSummaryFromLatest(latestText = "", allText = "", mineText = "", messages = []) {
   const latest = normalizeVisibleMailText(latestText);
   const intent = latestIntent(latest);
   const all = normalizeVisibleMailText(allText);
   const mine = normalizeVisibleMailText(mineText);
-  const items = extractDealTerms([], latest, all);
+  const items = extractDealTerms(messages, latest, all);
 
-  if (intent.revision) items.push("현재 단계: 기획안/가이드 수정 코멘트 반영");
-  if (intent.productSelect) items.push("제품: 링크 확인 후 선택 결과 회신 필요");
-  if (intent.contract) items.push("계약/정산: 요청 문서 확인 및 처리 필요");
-  if (intent.shipping) items.push("배송: 전달 가능한 배송지/연락처 확인 필요");
-  if (intent.money) items.push("비용: 광고비/제공 조건 확인 또는 조율 필요");
-  if (intent.guide) items.push("가이드: 필수 조건과 레퍼런스 확인 필요");
-  if (/그대로\s*촬영\s*진행|촬영\s*진행/.test(latest)) items.push("진행: 반영 어려운 부분이 없으면 그대로 촬영 진행");
-  if (/촬영용\s*제품|제품.*받|제품.*수령/.test(mine)) items.push("제품: 촬영용 제품 수령 완료");
+  if (intent.revision) items.push(conditionItem("현재 단계: 기획안/가이드 수정 코멘트 반영", findSourceMessageIndex(messages, /수정|코멘트|피드백|기획안|가이드/)));
+  if (intent.productSelect) items.push(conditionItem("제품: 링크 확인 후 선택 결과 회신 필요", findSourceMessageIndex(messages, /제품|상품|링크|셀렉|선택/)));
+  if (intent.contract) items.push(conditionItem("계약/정산: 요청 문서 확인 및 처리 필요", findSourceMessageIndex(messages, /계약|서명|날인|정산|세금계산서/)));
+  if (intent.shipping) items.push(conditionItem("배송: 전달 가능한 배송지/연락처 확인 필요", findSourceMessageIndex(messages, /배송지|주소|연락처|수령|성함/)));
+  if (intent.money) items.push(conditionItem("비용: 광고비/제공 조건 확인 또는 조율 필요", findSourceMessageIndex(messages, /광고비|비용|금액|정산|VAT/)));
+  if (intent.guide) items.push(conditionItem("가이드: 필수 조건과 레퍼런스 확인 필요", findSourceMessageIndex(messages, /가이드|레퍼런스|필수|해시태그/)));
+  if (/그대로\s*촬영\s*진행|촬영\s*진행/.test(latest)) items.push(conditionItem("진행: 반영 어려운 부분이 없으면 그대로 촬영 진행", findSourceMessageIndex(messages, /그대로\s*촬영\s*진행|촬영\s*진행/)));
+  if (/촬영용\s*제품|제품.*받|제품.*수령/.test(mine)) items.push(conditionItem("제품: 촬영용 제품 수령 완료", findSourceMessageIndex(messages, /촬영용\s*제품|제품.*받|제품.*수령/)));
 
-  return uniqueItems(items.length ? items : extractConditions(latest || all), 7);
+  return uniqueItems(items.length ? items : extractConditions(latest || all), 6);
 }
 
 function draftFromLatest(latestText = "", sender = "담당자", need = "") {
@@ -1210,7 +1257,7 @@ function buildDealInsight(deal, messages) {
   const latestExternalText = currentMessageText(latestExternal);
   const allText = usableMessages.map(currentMessageText).join("\n\n");
   const lastFromMe = latest.from && isSenderMe(latest.from);
-  const conditions = conditionSummaryFromLatest(latestExternalText || latestText, allText, currentMessageText(latestMine || {}));
+  const conditions = conditionSummaryFromLatest(latestExternalText || latestText, allText, currentMessageText(latestMine || {}), usableMessages);
   const latestSender = senderName(latestExternal.from);
   const latestSummary = compactSummary(latestExternalText || latestText, 92);
   const need = lastFromMe ? "상대 답장을 기다리는 상태" : inferNeed(latestExternalText || latestText);
@@ -1268,6 +1315,13 @@ function renderTimeline(deal) {
   `;
 }
 
+function renderConditionItem(item) {
+  const text = conditionText(item);
+  const index = typeof item === "object" ? Number(item.messageIndex) : -1;
+  const attrs = Number.isInteger(index) && index >= 0 ? ` data-condition-message="${index}" title="원문 위치 보기"` : "";
+  return `<button class="condition-chip" type="button"${attrs}>${escapeHtml(text)}</button>`;
+}
+
 function renderDetail() {
   const deal = deals.find((item) => item.id === state.selectedId) || filteredDeals()[0];
   if (!deal) {
@@ -1313,7 +1367,7 @@ function renderDetail() {
       </section>
       <section class="section">
         <h3>핵심 조건</h3>
-        <div class="condition-list">${insight.conditions.map((item) => `<span>${escapeHtml(item)}</span>`).join("")}</div>
+        <div class="condition-list">${insight.conditions.map(renderConditionItem).join("")}</div>
       </section>
       <section class="section" style="grid-column: 1 / -1;">
         <h3>대화 흐름</h3>
@@ -1329,8 +1383,9 @@ function renderDetail() {
                   const key = `${deal.id}:${index}`;
                   const expanded = state.expandedMessages.has(key);
                   const from = message.from || "알 수 없음";
+                  const highlighted = state.highlightedMessage === key;
                   return `
-                  <article class="mail-message ${expanded ? "expanded" : "collapsed"} ${isSenderMe(from) ? "from-me" : ""}">
+                  <article class="mail-message ${expanded ? "expanded" : "collapsed"} ${isSenderMe(from) ? "from-me" : ""} ${highlighted ? "source-highlight" : ""}" data-mail-index="${index}">
                     <button class="mail-message-summary" data-message-key="${escapeAttr(key)}" type="button" aria-expanded="${expanded}">
                       ${avatarMarkup(from, from).replace("deal-avatar", "mail-avatar")}
                       <span class="mail-message-main">
@@ -1436,6 +1491,7 @@ document.addEventListener("click", (event) => {
   const dealButton = event.target.closest("[data-id]");
   if (dealButton) {
     state.selectedId = dealButton.dataset.id;
+    state.highlightedMessage = "";
     render();
     openMobileDetail();
     openDesktopDetail();
@@ -1445,6 +1501,7 @@ document.addEventListener("click", (event) => {
   const filterButton = event.target.closest("[data-filter]");
   if (filterButton) {
     state.filter = filterButton.dataset.filter;
+    state.highlightedMessage = "";
     document.body.classList.remove("mobile-drawer-open");
     closeDesktopDetail();
     render();
@@ -1466,6 +1523,33 @@ document.addEventListener("click", (event) => {
       state.rawMailOpen.add(id);
     }
     renderDetail();
+    return;
+  }
+
+  const conditionButton = event.target.closest("[data-condition-message]");
+  if (conditionButton) {
+    const selectedId = String(state.selectedId || "");
+    const index = Number(conditionButton.dataset.conditionMessage);
+    if (!selectedId || !Number.isInteger(index) || index < 0) return;
+
+    const key = `${selectedId}:${index}`;
+    state.rawMailOpen.add(selectedId);
+    state.expandedMessages.add(key);
+    state.highlightedMessage = key;
+    renderDetail();
+    requestAnimationFrame(() => {
+      const target = document.querySelector(`#mailThreadSection [data-mail-index="${index}"]`);
+      if (target) {
+        target.scrollIntoView({ behavior: "smooth", block: "center" });
+        showToast("조건이 나온 원문을 펼쳤습니다.");
+      }
+    });
+    window.setTimeout(() => {
+      if (state.highlightedMessage === key) {
+        state.highlightedMessage = "";
+        document.querySelector(".mail-message.source-highlight")?.classList.remove("source-highlight");
+      }
+    }, 4000);
     return;
   }
 
