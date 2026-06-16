@@ -1109,6 +1109,16 @@ function inferContractStatus(text = "") {
   return "";
 }
 
+function plausibleAmountText(matchText = "") {
+  const text = String(matchText || "").replace(/\s+/g, " ").trim();
+  if (!text) return "";
+  if (/광고비|비용|금액|협력\s*금액|진행|조건|정산|입금|제품\s*\d+\s*(?:대|개)?\s*\+|\$|vat/i.test(text)) return text;
+  const amount = text.match(/(\d{1,4})\s*만/);
+  if (amount && Number(amount[1]) >= 50) return text;
+  if (/\d+\s*원/.test(text) && !/만\s*원/.test(text)) return "";
+  return "";
+}
+
 function extractDealTerms(messages = [], latestText = "", allText = "") {
   const cleanAll = normalizeVisibleMailText(allText);
   const cleanLatest = normalizeVisibleMailText(latestText);
@@ -1117,8 +1127,10 @@ function extractDealTerms(messages = [], latestText = "", allText = "") {
 
   const format = inferContentFormat(combined);
   const amountPattern = /(?:제품\s*\d+\s*(?:대|개)?\s*\+\s*)?(?:(?:광고비|비용|금액|협력\s*금액|진행|조건)[^\n]{0,24}?)?(?:\d{1,3}(?:,\d{3})*|\d+)\s*만\s*원?\s*(?:\(?\s*vat\s*(?:별도|포함)?\s*\)?)?|(?:제품\s*\d+\s*(?:대|개)?\s*\+\s*)?(?:\d{1,3}(?:,\d{3})*|\d+)\s*만원?\s*(?:\(?\s*vat\s*(?:별도|포함)?\s*\)?)?|(?:\d{1,3}(?:,\d{3})*|\d+)\s*원\s*(?:\(?\s*vat\s*(?:별도|포함)?\s*\)?)?|\$\s*(?:\d{1,3}(?:,\d{3})*|\d+)|(?:\d{2,4})\s*(?:vat|VAT)\s*(?:별도|포함)/g;
-  const amountMatch = latestMatch(combined, amountPattern);
-  const amountText = amountMatch ? amountMatch[0].replace(/\s+/g, " ").replace(/\s+\)/g, ")").trim() : "";
+  const amountMatches = [...combined.matchAll(amountPattern)]
+    .map((match) => plausibleAmountText(match[0]).replace(/\s+\)/g, ")"))
+    .filter(Boolean);
+  const amountText = amountMatches.length ? amountMatches[amountMatches.length - 1] : "";
   if (format || amountText) items.push(`진행 조건: ${[format, amountText].filter(Boolean).join(" · ")}`);
 
   const uploadMatch = latestMatch(combined, /(?:업로드|게시|최종본\s*확인\s*및\s*업로드)[^\n]{0,26}?(\d{1,2}\s*월\s*\d{1,2}\s*일|\d{1,2}\/\d{1,2}|\d{4}[.\-]\s*\d{1,2}[.\-]\s*\d{1,2})|(?:\d{1,2}\s*월\s*\d{1,2}\s*일|\d{1,2}\/\d{1,2})[^\n]{0,18}(?:업로드|게시)/g);
