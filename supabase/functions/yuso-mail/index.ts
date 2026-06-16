@@ -685,24 +685,13 @@ async function syncGmailNow() {
   }
 
   const updated = new Map<string, MailDeal>(existingDeals.map((deal) => [String(deal.id), deal]));
-  const existingByThread = new Map<string, MailDeal>();
-  for (const deal of existingDeals) {
-    const threadId = gmailThreadIdFromDeal(deal);
-    if (threadId) existingByThread.set(threadId, deal);
-  }
   let skippedDeleted = 0;
   let skippedNoise = 0;
-  let skippedUnchanged = 0;
   let added = 0;
   let changed = 0;
   const refs = Array.from(threadRefs.entries()).map(([id, historyId]) => ({ id, historyId }));
   let cursor = 0;
   const processThread = async (ref: { id: string; historyId: string }) => {
-    const existing = existingByThread.get(ref.id);
-    if (existing?.gmailHistoryId && ref.historyId && String(existing.gmailHistoryId) === ref.historyId) {
-      skippedUnchanged++;
-      return;
-    }
     const id = ref.id;
     const thread = await gmailJson(`threads/${id}?format=full`, accessToken);
     if (isNoiseThread(thread)) {
@@ -738,7 +727,7 @@ async function syncGmailNow() {
   payload.source = "Gmail OAuth yuso@wootso.com only";
   payload.updatedAt = seoulNow();
   await updateMailPayload(payload);
-  return { ok: true, added, updated: changed, skippedDeleted, skippedNoise, skippedUnchanged, scanned: refs.length, finalCount: payload.deals.length, updatedAt: payload.updatedAt };
+  return { ok: true, added, updated: changed, skippedDeleted, skippedNoise, scanned: refs.length, finalCount: payload.deals.length, updatedAt: payload.updatedAt };
 }
 
 async function handlePost(req: Request, p: string) {
