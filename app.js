@@ -723,13 +723,16 @@ function dealDedupeKey(deal) {
 }
 
 function betterDeal(left, right) {
-  const leftMessages = dealMessages(left).length;
-  const rightMessages = dealMessages(right).length;
   const leftHasGmail = /^https:\/\/mail\.google\.com/i.test(String(left?.gmail || ""));
   const rightHasGmail = /^https:\/\/mail\.google\.com/i.test(String(right?.gmail || ""));
   if (leftHasGmail !== rightHasGmail) return leftHasGmail ? left : right;
+  const leftDate = parseDealDate(left).getTime();
+  const rightDate = parseDealDate(right).getTime();
+  if (leftDate !== rightDate) return leftDate > rightDate ? left : right;
+  const leftMessages = dealMessages(left).length;
+  const rightMessages = dealMessages(right).length;
   if (leftMessages !== rightMessages) return leftMessages > rightMessages ? left : right;
-  return parseDealDate(left).getTime() >= parseDealDate(right).getTime() ? left : right;
+  return left;
 }
 
 function normalizeDeals(list = []) {
@@ -969,11 +972,49 @@ function extractConditions(text = "") {
 
 function inferNeed(text = "") {
   const clean = normalizeVisibleMailText(text);
+  if (/(기획안|제안서|가이드).*(수정|코멘트|피드백)|(?:수정|코멘트|피드백).*(기획안|제안서|가이드)/.test(clean)) return "기획안 코멘트와 수정 요청을 확인해서 반영하기";
+  if (/(상품|제품|물품|링크).*(추가|선택|셀렉|확인)|(?:추가|선택|셀렉).*(상품|제품|물품|링크)/i.test(clean)) return "추가된 제품 링크를 확인하고 셀렉/진행 여부를 답장하기";
+  if (/계약|서명|날인|계약서/.test(clean)) return "계약서와 서명 요청 내용을 확인해서 처리하기";
   if (/주소|배송지|수령|연락처|성함/.test(clean)) return "배송지/연락처 정보를 확인해서 보내기";
   if (/일정|가능|확인|마감|촬영|업로드|진행/.test(clean)) return "가능 일정과 진행 여부를 답장하기";
   if (/비용|광고비|단가|견적|페이백|현금|VAT|무상/.test(clean)) return "조건이 맞는지 보고 비용/진행 방식 협의하기";
   if (/가이드|계약|링크|성과|코드/.test(clean)) return "가이드와 진행 조건을 확인하고 필요한 자료 요청하기";
   return "제안 내용을 검토하고 진행 여부를 답장하기";
+}
+
+function latestActionSteps(text = "", need = "") {
+  const clean = normalizeVisibleMailText(text);
+  const steps = [];
+  if (/(기획안|제안서|가이드).*(수정|코멘트|피드백)|(?:수정|코멘트|피드백).*(기획안|제안서|가이드)/.test(clean)) {
+    steps.push("기획안에 달린 수정 코멘트를 열어서 반영할 부분 확인하기");
+    steps.push("수정 반영 후 가능한 일정과 진행 여부를 답장하기");
+  }
+  if (/(상품|제품|물품|링크).*(추가|선택|셀렉|확인)|(?:추가|선택|셀렉).*(상품|제품|물품|링크)/i.test(clean)) {
+    steps.push("메일에 온 제품/상품 링크를 열어 추가된 항목 확인하기");
+    steps.push("선택할 제품을 정리해서 상대에게 회신하기");
+  }
+  if (/계약|서명|날인|계약서/.test(clean)) steps.push("계약서 이름과 서명 요청 내용을 확인해서 서명 처리하기");
+  if (/주소|배송지|수령|연락처|성함/.test(clean)) steps.push("보내도 되는 배송지/연락처 정보만 정리해서 전달하기");
+  if (/비용|광고비|단가|견적|페이백|현금|VAT|무상/.test(clean)) steps.push("광고비와 제공 조건이 맞는지 확인하고 조정할 조건 표시하기");
+  if (/일정|마감|촬영|업로드|이번\s*주|다음\s*주|오늘|내일/.test(clean)) steps.push("촬영/업로드 가능 일정을 캘린더와 비교해서 답장하기");
+  steps.push(need);
+  steps.push("답장 전 최신 원문에서 빠진 조건이 없는지 한 번 더 확인하기");
+  return uniqueItems(steps, 4);
+}
+
+function progressFromLatest(text = "", sender = "상대", lastFromMe = false, need = "") {
+  const clean = normalizeVisibleMailText(text);
+  if (lastFromMe) return `내 답장 완료 · ${sender} 회신 대기`;
+  if (/(기획안|제안서|가이드).*(수정|코멘트|피드백)|(?:수정|코멘트|피드백).*(기획안|제안서|가이드)/.test(clean)) {
+    return "답장 필요 · 상대가 기획안 수정 코멘트를 전달했고, 반영 여부와 진행 가능 일정을 회신해야 함";
+  }
+  if (/(상품|제품|물품|링크).*(추가|선택|셀렉|확인)|(?:추가|선택|셀렉).*(상품|제품|물품|링크)/i.test(clean)) {
+    return "답장 필요 · 상대가 제품/상품 링크 확인을 요청했고, 셀렉 결과를 회신해야 함";
+  }
+  if (/계약|서명|날인|계약서/.test(clean)) return "답장 필요 · 계약/서명 단계라 요청 문서를 확인하고 처리해야 함";
+  if (/주소|배송지|수령|연락처|성함/.test(clean)) return "답장 필요 · 제품 발송을 위한 배송 정보 요청 단계";
+  if (/비용|광고비|단가|견적|페이백|현금|VAT|무상/.test(clean)) return "답장 필요 · 비용/제공 조건을 검토하고 협의해야 함";
+  return `답장 필요 · ${need}`;
 }
 
 function buildDealInsight(deal, messages) {
@@ -985,13 +1026,11 @@ function buildDealInsight(deal, messages) {
   const latestExternalText = currentMessageText(latestExternal);
   const allText = usableMessages.map(currentMessageText).join("\n\n");
   const lastFromMe = latest.from && isSenderMe(latest.from);
-  const conditions = extractConditions(allText);
+  const conditions = extractConditions(latestExternalText || latestText || allText);
   const latestSender = senderName(latestExternal.from);
   const latestSummary = compactSummary(latestExternalText || latestText, 92);
   const need = lastFromMe ? "상대 답장을 기다리는 상태" : inferNeed(latestExternalText || latestText);
-  const progress = lastFromMe
-    ? `내 답장 완료 · ${latestSender} 회신 대기`
-    : `답장 필요 · ${need}`;
+  const progress = progressFromLatest(latestExternalText || latestText, latestSender, lastFromMe, need);
   const conversation = uniqueItems([
     latestExternal ? `상대: ${compactSummary(latestExternalText, 82)}` : "",
     latestMine ? `나: ${compactSummary(currentMessageText(latestMine), 82)}` : "",
@@ -999,12 +1038,7 @@ function buildDealInsight(deal, messages) {
   ], 3);
   const nextSteps = lastFromMe
     ? ["새 회신이 오면 조건 변경 여부를 확인하기", "급한 건이면 2-3일 뒤 가볍게 리마인드하기"]
-    : uniqueItems([
-        need,
-        /비용|광고비|단가|페이백|무상/.test(latestExternalText) ? "무상/성과형이면 고정 광고비 가능 여부를 협의하기" : "",
-        /주소|배송지|연락처/.test(latestExternalText) ? "보내도 되는 배송 정보만 정리해서 전달하기" : "",
-        "답장 전 원문에서 누락된 조건이 없는지 확인하기",
-      ], 4);
+    : latestActionSteps(latestExternalText || latestText, need);
   const draft = lastFromMe
     ? `안녕하세요, ${latestSender}님.\n\n이전 메일 확인 부탁드립니다. 추가로 필요한 내용이 있으면 편하게 말씀 주세요.\n\n감사합니다.\n유소정 드림`
     : `안녕하세요, ${latestSender}님.\n\n제안 주신 내용 확인했습니다. ${need.replace(/기$/, "겠습니다")}.\n\n진행 전 아래 내용만 한 번 더 확인 부탁드립니다.\n- 진행 방식/콘텐츠 형태\n- 일정 및 업로드 마감\n- 제공 제품과 비용 조건\n\n확인해주시면 검토 후 답장드리겠습니다.\n\n감사합니다.\n유소정 드림`;
