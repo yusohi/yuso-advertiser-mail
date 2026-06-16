@@ -655,15 +655,15 @@ async function syncGmailNow() {
   const queries = [
     {
       q: "newer_than:45d -in:trash -in:spam",
-      pages: 1,
-      max: 10,
+      pages: 2,
+      max: 50,
       labelIds: [YUSO_LABEL_ID],
     },
   ];
   if (needsBackfill) {
     queries.push(
       {
-        q: "newer_than:180d -in:trash -in:spam (광고 OR 협업 OR 제안 OR PPL OR 브랜디드 OR 협찬 OR 캠페인 OR 제품 OR 촬영 OR 업로드 OR 기획안 OR 가이드 OR 계약 OR 견적 OR 광고비 OR partnership OR collaboration OR campaign OR sponsor)",
+        q: "newer_than:180d -in:trash -in:spam (광고 OR 협업 OR 협력 OR 제안 OR PPL OR PR OR 홍보 OR 브랜디드 OR 협찬 OR 캠페인 OR 제품 OR 촬영 OR 업로드 OR 기획안 OR 가이드 OR 계약 OR 견적 OR 광고비 OR partnership OR collaboration OR campaign OR sponsor)",
         pages: 2,
         max: 30,
         labelIds: [YUSO_LABEL_ID],
@@ -674,10 +674,16 @@ async function syncGmailNow() {
         max: 20,
         labelIds: [YUSO_LABEL_ID],
       },
+      {
+        q: "(테무 OR temu OR felicia.zhou) newer_than:180d -in:trash -in:spam",
+        pages: 1,
+        max: 20,
+        labelIds: [YUSO_LABEL_ID],
+      },
       { q: "from:jnhan@momentsco.com newer_than:180d -in:trash -in:spam", pages: 1, max: 20, labelIds: [YUSO_LABEL_ID] },
     );
   }
-  const threadLimit = needsBackfill ? 70 : 10;
+  const threadLimit = needsBackfill ? 90 : 50;
   const threadRefs = new Map<string, string>();
   for (const query of queries) {
     for (const ref of await gmailThreadRefs(query.q, accessToken, query.pages, query.max, query.labelIds || [])) {
