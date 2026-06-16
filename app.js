@@ -970,70 +970,92 @@ function extractConditions(text = "") {
   ], 8);
 }
 
-function inferNeed(text = "") {
+function latestIntent(text = "") {
   const clean = normalizeVisibleMailText(text);
-  if (/(기획안|제안서|가이드).*(수정|코멘트|피드백)|(?:수정|코멘트|피드백).*(기획안|제안서|가이드)/.test(clean)) return "기획안 코멘트와 수정 요청을 확인해서 반영하기";
-  if (/(상품|제품|물품|링크).*(추가|선택|셀렉|확인)|(?:추가|선택|셀렉).*(상품|제품|물품|링크)/i.test(clean)) return "추가된 제품 링크를 확인하고 셀렉/진행 여부를 답장하기";
-  if (/계약|서명|날인|계약서/.test(clean)) return "계약서와 서명 요청 내용을 확인해서 처리하기";
-  if (/주소|배송지|수령|연락처|성함/.test(clean)) return "배송지/연락처 정보를 확인해서 보내기";
-  if (/일정|가능|확인|마감|촬영|업로드|진행/.test(clean)) return "가능 일정과 진행 여부를 답장하기";
-  if (/비용|광고비|단가|견적|페이백|현금|VAT|무상/.test(clean)) return "조건이 맞는지 보고 비용/진행 방식 협의하기";
-  if (/가이드|계약|링크|성과|코드/.test(clean)) return "가이드와 진행 조건을 확인하고 필요한 자료 요청하기";
+  return {
+    clean,
+    revision: /(기획안|제안서|가이드|콘티|시안|원고).*(수정|코멘트|피드백|검토|확인)|(?:수정|코멘트|피드백|검토).*(기획안|제안서|가이드|콘티|시안|원고)/.test(clean),
+    productSelect: /(상품|제품|물품|링크|리스트|카탈로그).*(추가|선택|셀렉|확인|골라|고르|담아)|(?:추가|선택|셀렉|확인|골라|고르|담아).*(상품|제품|물품|링크|리스트|카탈로그)/i.test(clean),
+    contract: /계약|서명|날인|계약서|동의서|세금계산서|사업자등록증|통장사본/.test(clean),
+    shipping: /주소|배송지|수령|연락처|성함|전화번호|수취인|택배|발송|출고/.test(clean),
+    money: /비용|광고비|단가|견적|페이백|현금|VAT|무상|유상|금액|입금|정산|원고료|협찬비/.test(clean),
+    schedule: /일정|가능|마감|촬영|업로드|게시|릴리즈|진행일|이번\s*주|다음\s*주|금주|오늘|내일|오전|오후/.test(clean),
+    guide: /가이드라인|가이드|제품\s*정보|제품정보|레퍼런스|주의사항|필수\s*멘트|해시태그|태그|링크|성과|코드/.test(clean),
+    approval: /확정|승인|컨펌|오케이|좋습니다|진행\s*부탁|그대로\s*진행|문제\s*없|괜찮/.test(clean),
+    waitingReply: /회신|답장|확인\s*부탁|검토\s*부탁|말씀\s*부탁|전달\s*부탁|알려\s*주|문의|요청|가능하실까요|어떠실까요|reply|respond|confirm|check/i.test(clean),
+  };
+}
+
+function inferNeed(text = "") {
+  const intent = latestIntent(text);
+  if (intent.revision) return "기획안/가이드 수정 요청을 확인해서 반영하기";
+  if (intent.productSelect) return "제품 링크를 확인하고 선택 결과를 회신하기";
+  if (intent.contract) return "계약/서명/정산 요청을 확인해서 처리하기";
+  if (intent.shipping) return "배송지/연락처 정보를 확인해서 보내기";
+  if (intent.money) return "비용과 제공 조건이 맞는지 확인해서 답장하기";
+  if (intent.guide) return "가이드와 진행 조건을 확인하고 필요한 자료를 정리하기";
+  if (intent.schedule || intent.approval) return "가능 일정과 진행 여부를 답장하기";
   return "제안 내용을 검토하고 진행 여부를 답장하기";
 }
 
 function latestActionSteps(text = "", need = "") {
-  const clean = normalizeVisibleMailText(text);
+  const intent = latestIntent(text);
   const steps = [];
-  if (/(기획안|제안서|가이드).*(수정|코멘트|피드백)|(?:수정|코멘트|피드백).*(기획안|제안서|가이드)/.test(clean)) {
-    steps.push("기획안에 달린 수정 코멘트를 열어서 반영할 부분 확인하기");
+  if (intent.revision) {
+    steps.push("기획안/가이드에 남긴 수정 코멘트를 열어서 반영할 부분 확인하기");
     steps.push("수정 반영 후 가능한 일정과 진행 여부를 답장하기");
   }
-  if (/(상품|제품|물품|링크).*(추가|선택|셀렉|확인)|(?:추가|선택|셀렉).*(상품|제품|물품|링크)/i.test(clean)) {
+  if (intent.productSelect) {
     steps.push("메일에 온 제품/상품 링크를 열어 추가된 항목 확인하기");
     steps.push("선택할 제품을 정리해서 상대에게 회신하기");
   }
-  if (/계약|서명|날인|계약서/.test(clean)) steps.push("계약서 이름과 서명 요청 내용을 확인해서 서명 처리하기");
-  if (/주소|배송지|수령|연락처|성함/.test(clean)) steps.push("보내도 되는 배송지/연락처 정보만 정리해서 전달하기");
-  if (/비용|광고비|단가|견적|페이백|현금|VAT|무상/.test(clean)) steps.push("광고비와 제공 조건이 맞는지 확인하고 조정할 조건 표시하기");
-  if (/일정|마감|촬영|업로드|이번\s*주|다음\s*주|오늘|내일/.test(clean)) steps.push("촬영/업로드 가능 일정을 캘린더와 비교해서 답장하기");
+  if (intent.contract) steps.push("계약/서명/정산 자료 요청 내용을 확인해서 처리하기");
+  if (intent.shipping) steps.push("보내도 되는 배송지/연락처 정보만 정리해서 전달하기");
+  if (intent.money) steps.push("광고비와 제공 조건이 맞는지 확인하고 조정할 조건 표시하기");
+  if (intent.guide) steps.push("가이드라인/필수 조건을 확인하고 기획안 또는 촬영 준비에 반영하기");
+  if (intent.schedule) steps.push("촬영/업로드 가능 일정을 캘린더와 비교해서 답장하기");
   steps.push(need);
   steps.push("답장 전 최신 원문에서 빠진 조건이 없는지 한 번 더 확인하기");
   return uniqueItems(steps, 4);
 }
 
 function progressFromLatest(text = "", sender = "상대", lastFromMe = false, need = "") {
-  const clean = normalizeVisibleMailText(text);
+  const intent = latestIntent(text);
   if (lastFromMe) return `내 답장 완료 · ${sender} 회신 대기`;
-  if (/(기획안|제안서|가이드).*(수정|코멘트|피드백)|(?:수정|코멘트|피드백).*(기획안|제안서|가이드)/.test(clean)) {
-    return "답장 필요 · 상대가 기획안 수정 코멘트를 전달했고, 반영 여부와 진행 가능 일정을 회신해야 함";
-  }
-  if (/(상품|제품|물품|링크).*(추가|선택|셀렉|확인)|(?:추가|선택|셀렉).*(상품|제품|물품|링크)/i.test(clean)) {
+  if (intent.revision) return "답장 필요 · 상대가 기획안/가이드 수정 코멘트를 전달했고, 반영 여부와 진행 가능 일정을 회신해야 함";
+  if (intent.productSelect) {
     return "답장 필요 · 상대가 제품/상품 링크 확인을 요청했고, 셀렉 결과를 회신해야 함";
   }
-  if (/계약|서명|날인|계약서/.test(clean)) return "답장 필요 · 계약/서명 단계라 요청 문서를 확인하고 처리해야 함";
-  if (/주소|배송지|수령|연락처|성함/.test(clean)) return "답장 필요 · 제품 발송을 위한 배송 정보 요청 단계";
-  if (/비용|광고비|단가|견적|페이백|현금|VAT|무상/.test(clean)) return "답장 필요 · 비용/제공 조건을 검토하고 협의해야 함";
+  if (intent.contract) return "답장 필요 · 계약/서명/정산 자료를 확인하고 처리해야 함";
+  if (intent.shipping) return "답장 필요 · 제품 발송을 위한 배송 정보 요청 단계";
+  if (intent.money) return "답장 필요 · 비용/제공 조건을 검토하고 협의해야 함";
+  if (intent.guide) return "답장 필요 · 가이드라인과 진행 조건을 확인해 반영해야 함";
+  if (intent.schedule || intent.approval) return "답장 필요 · 일정과 진행 여부를 확인해 회신해야 함";
   return `답장 필요 · ${need}`;
 }
 
 function conversationSummaryFromLatest(messages, latestExternal, latestMine, latestText = "") {
   const cleanLatest = normalizeVisibleMailText(latestText);
+  const intent = latestIntent(cleanLatest);
   const mineText = currentMessageText(latestMine || {});
   const firstText = currentMessageText(messages[0] || {});
   const items = [];
 
-  if (/(기획안|제안서|가이드).*(수정|코멘트|피드백)|(?:수정|코멘트|피드백).*(기획안|제안서|가이드)/.test(cleanLatest)) {
-    items.push("최근: 상대가 전달한 기획안에 수정 코멘트를 달아두었고, 반영이 어려운 부분이 있으면 말해달라고 함");
+  if (intent.revision) {
+    items.push("최근: 상대가 기획안/가이드/원고 수정 의견을 전달했고, 반영 여부를 알려달라고 함");
     if (/그대로\s*촬영\s*진행|촬영\s*진행/.test(cleanLatest)) items.push("진행: 큰 수정은 거의 없어서 코멘트 반영 후 그대로 촬영 진행하면 되는 상태");
-  } else if (/(상품|제품|물품|링크).*(추가|선택|셀렉|확인)|(?:추가|선택|셀렉).*(상품|제품|물품|링크)/i.test(cleanLatest)) {
-    items.push("최근: 상대가 제품/상품 링크를 다시 확인해달라고 요청함");
-  } else if (/계약|서명|날인|계약서/.test(cleanLatest)) {
-    items.push("최근: 계약 또는 서명 관련 처리가 필요한 단계로 넘어옴");
-  } else if (/주소|배송지|수령|연락처|성함/.test(cleanLatest)) {
+  } else if (intent.productSelect) {
+    items.push("최근: 상대가 제품/상품 링크 확인 또는 셀렉 결과 회신을 요청함");
+  } else if (intent.contract) {
+    items.push("최근: 계약/서명/정산 자료 처리가 필요한 단계로 넘어옴");
+  } else if (intent.shipping) {
     items.push("최근: 제품 발송을 위한 배송 정보 확인이 필요한 상태");
-  } else if (/비용|광고비|단가|견적|페이백|현금|VAT|무상/.test(cleanLatest)) {
+  } else if (intent.money) {
     items.push("최근: 비용과 제공 조건을 확인하거나 조율해야 하는 상태");
+  } else if (intent.guide) {
+    items.push("최근: 상대가 가이드라인/필수 조건/자료를 확인해달라고 전달함");
+  } else if (intent.schedule || intent.approval) {
+    items.push("최근: 일정 또는 진행 가능 여부를 확인해 회신해야 하는 상태");
   } else if (cleanLatest) {
     items.push(`최근: ${compactSummary(cleanLatest, 96)}`);
   }
@@ -1055,17 +1077,24 @@ function conversationSummaryFromLatest(messages, latestExternal, latestMine, lat
 
 function conditionSummaryFromLatest(latestText = "", allText = "", mineText = "") {
   const latest = normalizeVisibleMailText(latestText);
+  const intent = latestIntent(latest);
   const all = normalizeVisibleMailText(allText);
   const mine = normalizeVisibleMailText(mineText);
   const items = [];
 
-  if (/(기획안|제안서|가이드).*(수정|코멘트|피드백)|(?:수정|코멘트|피드백).*(기획안|제안서|가이드)/.test(latest)) items.push("기획안: 수정 코멘트 확인 및 반영 필요");
+  if (intent.revision) items.push("기획안/가이드: 수정 코멘트 확인 및 반영 필요");
+  if (intent.productSelect) items.push("제품: 링크 확인 후 선택 결과 회신 필요");
+  if (intent.contract) items.push("계약/정산: 요청 문서 확인 및 처리 필요");
+  if (intent.shipping) items.push("배송: 전달 가능한 배송지/연락처 확인 필요");
+  if (intent.money) items.push("비용: 광고비/제공 조건 확인 또는 조율 필요");
+  if (intent.guide) items.push("가이드: 필수 조건과 레퍼런스 확인 필요");
   if (/그대로\s*촬영\s*진행|촬영\s*진행/.test(latest)) items.push("진행: 반영 어려운 부분이 없으면 그대로 촬영 진행");
   if (/가이드라인|가이드|제품\s*정보|제품정보/.test(all)) items.push("자료: 가이드라인과 제품 정보안 확인 완료");
   if (/촬영용\s*제품|제품.*받|제품.*수령/.test(mine)) items.push("제품: 촬영용 제품 수령 완료");
   if (/기존.*주소|전달.*주소|주소지/.test(all)) items.push("배송: 기존 전달 주소 기준으로 처리됨");
 
-  const amountMatches = [...all.matchAll(/(?:광고비|비용|금액|협력\s*금액)[^\n]{0,24}?((?:\d{1,3}(?:,\d{3})*|\d+)\s*(?:만\s*)?원|\$?\s*(?:\d{1,3}(?:,\d{3})*|\d+))/g)]
+  const amountSource = latest || all;
+  const amountMatches = [...amountSource.matchAll(/(?:광고비|비용|금액|협력\s*금액|정산|입금)[^\n]{0,28}?((?:\d{1,3}(?:,\d{3})*|\d+)\s*(?:만\s*)?원|\$?\s*(?:\d{1,3}(?:,\d{3})*|\d+))/g)]
     .map((match) => match[0].replace(/\s+/g, " ").trim());
   if (amountMatches.length) items.push(`비용: ${amountMatches[amountMatches.length - 1]}`);
 
@@ -1076,18 +1105,24 @@ function conditionSummaryFromLatest(latestText = "", allText = "", mineText = ""
 }
 
 function draftFromLatest(latestText = "", sender = "담당자", need = "") {
-  const clean = normalizeVisibleMailText(latestText);
-  if (/(기획안|제안서|가이드).*(수정|코멘트|피드백)|(?:수정|코멘트|피드백).*(기획안|제안서|가이드)/.test(clean)) {
+  const intent = latestIntent(latestText);
+  if (intent.revision) {
     return `안녕하세요, ${sender}님.\n\n기획안에 남겨주신 수정 코멘트 확인했습니다.\n말씀주신 부분 반영해서 진행하겠습니다.\n\n혹시 반영이 어려운 부분이 생기면 바로 다시 말씀드리고,\n특이사항 없으면 기존 일정대로 촬영 진행하겠습니다.\n\n감사합니다.\n유소정 드림`;
   }
-  if (/(상품|제품|물품|링크).*(추가|선택|셀렉|확인)|(?:추가|선택|셀렉).*(상품|제품|물품|링크)/i.test(clean)) {
+  if (intent.productSelect) {
     return `안녕하세요, ${sender}님.\n\n보내주신 제품 링크 확인했습니다.\n추가된 항목까지 다시 살펴보고 선택 가능한 제품 정리해서 회신드리겠습니다.\n\n감사합니다.\n유소정 드림`;
   }
-  if (/계약|서명|날인|계약서/.test(clean)) {
+  if (intent.contract) {
     return `안녕하세요, ${sender}님.\n\n보내주신 계약/서명 관련 내용 확인했습니다.\n문서 내용 확인 후 서명 진행하겠습니다.\n\n감사합니다.\n유소정 드림`;
   }
-  if (/주소|배송지|수령|연락처|성함/.test(clean)) {
+  if (intent.shipping) {
     return `안녕하세요, ${sender}님.\n\n배송 정보 확인해서 전달드립니다.\n\n이름: 유소정\n연락처: 010-4270-4573\n주소: [확인 후 입력]\n\n감사합니다.\n유소정 드림`;
+  }
+  if (intent.money) {
+    return `안녕하세요, ${sender}님.\n\n제안 주신 비용 및 제공 조건 확인했습니다.\n내부적으로 진행 가능 여부와 조건을 검토한 뒤 회신드리겠습니다.\n\n조정이 필요한 부분이 있으면 함께 정리해서 말씀드리겠습니다.\n\n감사합니다.\n유소정 드림`;
+  }
+  if (intent.guide) {
+    return `안녕하세요, ${sender}님.\n\n보내주신 가이드라인과 진행 조건 확인했습니다.\n필수로 반영해야 하는 부분 체크해서 기획안과 촬영 준비에 반영하겠습니다.\n\n확인 중 궁금한 점이 생기면 다시 문의드리겠습니다.\n\n감사합니다.\n유소정 드림`;
   }
   return `안녕하세요, ${sender}님.\n\n제안 주신 내용 확인했습니다. ${need.replace(/기$/, "겠습니다")}.\n\n진행 전 아래 내용만 한 번 더 확인 부탁드립니다.\n- 진행 방식/콘텐츠 형태\n- 일정 및 업로드 마감\n- 제공 제품과 비용 조건\n\n확인해주시면 검토 후 답장드리겠습니다.\n\n감사합니다.\n유소정 드림`;
 }
