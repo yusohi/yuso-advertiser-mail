@@ -1017,6 +1017,81 @@ function progressFromLatest(text = "", sender = "상대", lastFromMe = false, ne
   return `답장 필요 · ${need}`;
 }
 
+function conversationSummaryFromLatest(messages, latestExternal, latestMine, latestText = "") {
+  const cleanLatest = normalizeVisibleMailText(latestText);
+  const mineText = currentMessageText(latestMine || {});
+  const firstText = currentMessageText(messages[0] || {});
+  const items = [];
+
+  if (/(기획안|제안서|가이드).*(수정|코멘트|피드백)|(?:수정|코멘트|피드백).*(기획안|제안서|가이드)/.test(cleanLatest)) {
+    items.push("최근: 상대가 전달한 기획안에 수정 코멘트를 달아두었고, 반영이 어려운 부분이 있으면 말해달라고 함");
+    if (/그대로\s*촬영\s*진행|촬영\s*진행/.test(cleanLatest)) items.push("진행: 큰 수정은 거의 없어서 코멘트 반영 후 그대로 촬영 진행하면 되는 상태");
+  } else if (/(상품|제품|물품|링크).*(추가|선택|셀렉|확인)|(?:추가|선택|셀렉).*(상품|제품|물품|링크)/i.test(cleanLatest)) {
+    items.push("최근: 상대가 제품/상품 링크를 다시 확인해달라고 요청함");
+  } else if (/계약|서명|날인|계약서/.test(cleanLatest)) {
+    items.push("최근: 계약 또는 서명 관련 처리가 필요한 단계로 넘어옴");
+  } else if (/주소|배송지|수령|연락처|성함/.test(cleanLatest)) {
+    items.push("최근: 제품 발송을 위한 배송 정보 확인이 필요한 상태");
+  } else if (/비용|광고비|단가|견적|페이백|현금|VAT|무상/.test(cleanLatest)) {
+    items.push("최근: 비용과 제공 조건을 확인하거나 조율해야 하는 상태");
+  } else if (cleanLatest) {
+    items.push(`최근: ${compactSummary(cleanLatest, 96)}`);
+  }
+
+  if (/가이드라인|가이드|제품\s*정보|제품정보|촬영용\s*제품|제품.*받/.test(mineText)) {
+    items.push("이전: 유소가 가이드라인과 제품 정보를 확인했고 촬영용 제품 수령도 알림");
+  } else if (mineText) {
+    items.push(`내 답장: ${compactSummary(mineText, 86)}`);
+  }
+
+  if (/선물|제품.*보내|협업|광고|브랜드|캠페인|PPL/i.test(firstText)) {
+    items.push("시작: 브랜드가 제품 협업/광고 제안으로 연락을 시작함");
+  } else if (firstText && firstText !== cleanLatest) {
+    items.push(`시작: ${compactSummary(firstText, 86)}`);
+  }
+
+  return uniqueItems(items, 4);
+}
+
+function conditionSummaryFromLatest(latestText = "", allText = "", mineText = "") {
+  const latest = normalizeVisibleMailText(latestText);
+  const all = normalizeVisibleMailText(allText);
+  const mine = normalizeVisibleMailText(mineText);
+  const items = [];
+
+  if (/(기획안|제안서|가이드).*(수정|코멘트|피드백)|(?:수정|코멘트|피드백).*(기획안|제안서|가이드)/.test(latest)) items.push("기획안: 수정 코멘트 확인 및 반영 필요");
+  if (/그대로\s*촬영\s*진행|촬영\s*진행/.test(latest)) items.push("진행: 반영 어려운 부분이 없으면 그대로 촬영 진행");
+  if (/가이드라인|가이드|제품\s*정보|제품정보/.test(all)) items.push("자료: 가이드라인과 제품 정보안 확인 완료");
+  if (/촬영용\s*제품|제품.*받|제품.*수령/.test(mine)) items.push("제품: 촬영용 제품 수령 완료");
+  if (/기존.*주소|전달.*주소|주소지/.test(all)) items.push("배송: 기존 전달 주소 기준으로 처리됨");
+
+  const amountMatches = [...all.matchAll(/(?:광고비|비용|금액|협력\s*금액)[^\n]{0,24}?((?:\d{1,3}(?:,\d{3})*|\d+)\s*(?:만\s*)?원|\$?\s*(?:\d{1,3}(?:,\d{3})*|\d+))/g)]
+    .map((match) => match[0].replace(/\s+/g, " ").trim());
+  if (amountMatches.length) items.push(`비용: ${amountMatches[amountMatches.length - 1]}`);
+
+  const dateMatches = [...all.matchAll(/\d{1,2}\s*월\s*\d{1,2}\s*일|\d{4}[.\-]\s*\d{1,2}[.\-]\s*\d{1,2}|이번\s*주|다음\s*주|금주|내일|오늘/g)].map((match) => match[0]);
+  if (dateMatches.length) items.push(`일정: ${dateMatches[dateMatches.length - 1]}`);
+
+  return uniqueItems(items.length ? items : extractConditions(latest || all), 6);
+}
+
+function draftFromLatest(latestText = "", sender = "담당자", need = "") {
+  const clean = normalizeVisibleMailText(latestText);
+  if (/(기획안|제안서|가이드).*(수정|코멘트|피드백)|(?:수정|코멘트|피드백).*(기획안|제안서|가이드)/.test(clean)) {
+    return `안녕하세요, ${sender}님.\n\n기획안에 남겨주신 수정 코멘트 확인했습니다.\n말씀주신 부분 반영해서 진행하겠습니다.\n\n혹시 반영이 어려운 부분이 생기면 바로 다시 말씀드리고,\n특이사항 없으면 기존 일정대로 촬영 진행하겠습니다.\n\n감사합니다.\n유소정 드림`;
+  }
+  if (/(상품|제품|물품|링크).*(추가|선택|셀렉|확인)|(?:추가|선택|셀렉).*(상품|제품|물품|링크)/i.test(clean)) {
+    return `안녕하세요, ${sender}님.\n\n보내주신 제품 링크 확인했습니다.\n추가된 항목까지 다시 살펴보고 선택 가능한 제품 정리해서 회신드리겠습니다.\n\n감사합니다.\n유소정 드림`;
+  }
+  if (/계약|서명|날인|계약서/.test(clean)) {
+    return `안녕하세요, ${sender}님.\n\n보내주신 계약/서명 관련 내용 확인했습니다.\n문서 내용 확인 후 서명 진행하겠습니다.\n\n감사합니다.\n유소정 드림`;
+  }
+  if (/주소|배송지|수령|연락처|성함/.test(clean)) {
+    return `안녕하세요, ${sender}님.\n\n배송 정보 확인해서 전달드립니다.\n\n이름: 유소정\n연락처: 010-4270-4573\n주소: [확인 후 입력]\n\n감사합니다.\n유소정 드림`;
+  }
+  return `안녕하세요, ${sender}님.\n\n제안 주신 내용 확인했습니다. ${need.replace(/기$/, "겠습니다")}.\n\n진행 전 아래 내용만 한 번 더 확인 부탁드립니다.\n- 진행 방식/콘텐츠 형태\n- 일정 및 업로드 마감\n- 제공 제품과 비용 조건\n\n확인해주시면 검토 후 답장드리겠습니다.\n\n감사합니다.\n유소정 드림`;
+}
+
 function buildDealInsight(deal, messages) {
   const usableMessages = messages.filter((message) => currentMessageText(message));
   const latest = usableMessages[usableMessages.length - 1] || {};
@@ -1026,22 +1101,18 @@ function buildDealInsight(deal, messages) {
   const latestExternalText = currentMessageText(latestExternal);
   const allText = usableMessages.map(currentMessageText).join("\n\n");
   const lastFromMe = latest.from && isSenderMe(latest.from);
-  const conditions = extractConditions(latestExternalText || latestText || allText);
+  const conditions = conditionSummaryFromLatest(latestExternalText || latestText, allText, currentMessageText(latestMine || {}));
   const latestSender = senderName(latestExternal.from);
   const latestSummary = compactSummary(latestExternalText || latestText, 92);
   const need = lastFromMe ? "상대 답장을 기다리는 상태" : inferNeed(latestExternalText || latestText);
   const progress = progressFromLatest(latestExternalText || latestText, latestSender, lastFromMe, need);
-  const conversation = uniqueItems([
-    latestExternal ? `상대: ${compactSummary(latestExternalText, 82)}` : "",
-    latestMine ? `나: ${compactSummary(currentMessageText(latestMine), 82)}` : "",
-    usableMessages[0] && usableMessages[0] !== latestExternal ? `시작: ${compactSummary(currentMessageText(usableMessages[0]), 82)}` : "",
-  ], 3);
+  const conversation = conversationSummaryFromLatest(usableMessages, latestExternal, latestMine, latestExternalText || latestText);
   const nextSteps = lastFromMe
     ? ["새 회신이 오면 조건 변경 여부를 확인하기", "급한 건이면 2-3일 뒤 가볍게 리마인드하기"]
     : latestActionSteps(latestExternalText || latestText, need);
   const draft = lastFromMe
     ? `안녕하세요, ${latestSender}님.\n\n이전 메일 확인 부탁드립니다. 추가로 필요한 내용이 있으면 편하게 말씀 주세요.\n\n감사합니다.\n유소정 드림`
-    : `안녕하세요, ${latestSender}님.\n\n제안 주신 내용 확인했습니다. ${need.replace(/기$/, "겠습니다")}.\n\n진행 전 아래 내용만 한 번 더 확인 부탁드립니다.\n- 진행 방식/콘텐츠 형태\n- 일정 및 업로드 마감\n- 제공 제품과 비용 조건\n\n확인해주시면 검토 후 답장드리겠습니다.\n\n감사합니다.\n유소정 드림`;
+    : draftFromLatest(latestExternalText || latestText, latestSender, need);
 
   return {
     progress,
