@@ -817,6 +817,41 @@ async function handlePost(req: Request, p: string) {
     }
   }
 
+  if (p === "/api/debug/gmail-thread") {
+    if (!(await verifyPassword(password))) return json(req, { error: "unauthorized" }, 401);
+    const threadId = String(body?.id || "");
+    const accessToken = await refreshAccessToken();
+    const refs = await gmailThreadRefs("newer_than:45d -in:trash -in:spam", accessToken, 1, 20, [YUSO_LABEL_ID]);
+    const thread = threadId ? await gmailJson(`threads/${threadId}?format=full`, accessToken) : undefined;
+    const targetMessages = thread ? messagesForTargetAccount(thread) : [];
+    const deal = thread ? await dealFromThread(thread, accessToken) : undefined;
+    return json(req, {
+      refs,
+      hasRef: refs.some((ref) => ref.id === threadId),
+      threadHistoryId: thread?.historyId || "",
+      rawMessageCount: Array.isArray(thread?.messages) ? thread.messages.length : 0,
+      targetMessageCount: targetMessages.length,
+      targetMessages: targetMessages.map((message) => ({
+        id: message.id,
+        internalDate: message.internalDate,
+        date: messageDate(message),
+        from: header(messageHeaders(message), "From"),
+        to: header(messageHeaders(message), "To"),
+        deliveredTo: header(messageHeaders(message), "Delivered-To"),
+        labels: message.labelIds,
+        subject: header(messageHeaders(message), "Subject"),
+        bodyStart: bodyFromPayload(message.payload as JsonMap | undefined).slice(0, 220),
+      })),
+      isNoise: thread ? isNoiseThread(thread) : null,
+      deal: deal && {
+        id: deal.id,
+        lastTouch: deal.lastTouch,
+        lastTouchIso: deal.lastTouchIso,
+        latest: storedMessages(deal).at(-1),
+      },
+    }, 200);
+  }
+
   return json(req, { error: "not_found" }, 404);
 }
 
