@@ -972,11 +972,28 @@ function extractConditions(text = "") {
   ], 8);
 }
 
+function hasRevisionRequest(clean = "") {
+  return (
+    /(기획안|제안서|가이드|콘티|시안|원고)[^\n]{0,90}(수정\s*필요|수정이\s*필요|수정\s*코멘트|코멘트\s*달|피드백|검토\s*의견|수정\s*의견|반영\s*부탁|반영\s*요청)/.test(clean) ||
+    /(수정\s*필요|수정이\s*필요|수정\s*코멘트|코멘트\s*달|피드백|검토\s*의견|수정\s*의견)[^\n]{0,90}(기획안|제안서|가이드|콘티|시안|원고)/.test(clean)
+  );
+}
+
+function isInitialProposal(clean = "") {
+  const proposal =
+    /(광고|협업|협찬|브랜디드|PPL|캠페인|제품\s*제공|제품\s*협찬|제안|문의|콜라보|partnership|collaboration|campaign|sponsor)/i.test(clean) &&
+    /(제안|문의|연락|진행|협업|캠페인|브랜드|제품|소개|광고|협찬|partnership|collaboration|campaign|sponsor)/i.test(clean);
+  const active =
+    /(계약서|전자계약|서명|날인|기획안\s*전달|가편|최종본|업로드\s*확정|촬영\s*진행|촬영용\s*제품|제품\s*수령|피드백\s*및\s*픽스|수정\s*코멘트|코멘트\s*달)/.test(clean);
+  return proposal && !active;
+}
+
 function latestIntent(text = "") {
   const clean = normalizeVisibleMailText(text);
   return {
     clean,
-    revision: /(기획안|제안서|가이드|콘티|시안|원고).*(수정|코멘트|피드백|검토|확인)|(?:수정|코멘트|피드백|검토).*(기획안|제안서|가이드|콘티|시안|원고)/.test(clean),
+    initialProposal: isInitialProposal(clean),
+    revision: hasRevisionRequest(clean),
     productSelect: /(상품|제품|물품|링크|리스트|카탈로그).*(추가|선택|셀렉|확인|골라|고르|담아)|(?:추가|선택|셀렉|확인|골라|고르|담아).*(상품|제품|물품|링크|리스트|카탈로그)/i.test(clean),
     contract: /계약|서명|날인|계약서|동의서|세금계산서|사업자등록증|통장사본/.test(clean),
     shipping: /주소|배송지|수령|연락처|성함|전화번호|수취인|택배|발송|출고/.test(clean),
@@ -990,6 +1007,7 @@ function latestIntent(text = "") {
 
 function inferNeed(text = "") {
   const intent = latestIntent(text);
+  if (intent.initialProposal) return "광고 제안 내용을 확인하고 진행 여부를 답장하기";
   if (intent.revision) return "기획안/가이드 수정 요청을 확인해서 반영하기";
   if (intent.productSelect) return "제품 링크를 확인하고 선택 결과를 회신하기";
   if (intent.contract) return "계약/서명/정산 요청을 확인해서 처리하기";
@@ -1003,6 +1021,13 @@ function inferNeed(text = "") {
 function latestActionSteps(text = "", need = "") {
   const intent = latestIntent(text);
   const steps = [];
+  if (intent.initialProposal) {
+    steps.push("브랜드와 제안 제품이 유소 채널에 맞는지 확인하기");
+    steps.push("진행할지, 유료 광고 조건이 필요한지 답장하기");
+    if (intent.schedule) steps.push("원하는 촬영/업로드 일정이 있는지 확인하기");
+    steps.push(need);
+    return uniqueItems(steps, 4);
+  }
   if (intent.revision) {
     steps.push("기획안/가이드에 남긴 수정 코멘트를 열어서 반영할 부분 확인하기");
     steps.push("수정 반영 후 가능한 일정과 진행 여부를 답장하기");
@@ -1024,6 +1049,7 @@ function latestActionSteps(text = "", need = "") {
 function progressFromLatest(text = "", sender = "상대", lastFromMe = false, need = "") {
   const intent = latestIntent(text);
   if (lastFromMe) return `내 답장 완료 · ${sender} 회신 대기`;
+  if (intent.initialProposal) return "신규 제안 · 브랜드가 광고/협업 가능 여부를 문의한 단계";
   if (intent.revision) return "답장 필요 · 상대가 기획안/가이드 수정 코멘트를 전달했고, 반영 여부와 진행 가능 일정을 회신해야 함";
   if (intent.productSelect) {
     return "답장 필요 · 상대가 제품/상품 링크 확인을 요청했고, 셀렉 결과를 회신해야 함";
@@ -1046,6 +1072,8 @@ function conversationSummaryFromLatest(messages, latestExternal, latestMine, lat
   if (intent.revision) {
     items.push("최근: 상대가 기획안/가이드/원고 수정 의견을 전달했고, 반영 여부를 알려달라고 함");
     if (/그대로\s*촬영\s*진행|촬영\s*진행/.test(cleanLatest)) items.push("진행: 큰 수정은 거의 없어서 코멘트 반영 후 그대로 촬영 진행하면 되는 상태");
+  } else if (intent.initialProposal) {
+    items.push(`최근: ${senderName(latestExternal?.from)}가 광고/협업 제안을 보냈고, 진행 가능 여부 검토가 필요한 상태`);
   } else if (intent.productSelect) {
     items.push("최근: 상대가 제품/상품 링크 확인 또는 셀렉 결과 회신을 요청함");
   } else if (intent.contract) {
@@ -1227,6 +1255,9 @@ function conditionSummaryFromLatest(latestText = "", allText = "", mineText = ""
 
 function draftFromLatest(latestText = "", sender = "담당자", need = "") {
   const intent = latestIntent(latestText);
+  if (intent.initialProposal) {
+    return `안녕하세요, ${sender}님.\n\n제안 주신 내용 확인했습니다.\n유소 채널과의 방향성, 희망 콘텐츠 형태, 제공 제품 및 광고비 조건을 함께 검토해보겠습니다.\n\n진행 가능 여부 확인 후 답장드리겠습니다.\n\n감사합니다.\n유소정 드림`;
+  }
   if (intent.revision) {
     return `안녕하세요, ${sender}님.\n\n기획안에 남겨주신 수정 코멘트 확인했습니다.\n말씀주신 부분 반영해서 진행하겠습니다.\n\n혹시 반영이 어려운 부분이 생기면 바로 다시 말씀드리고,\n특이사항 없으면 기존 일정대로 촬영 진행하겠습니다.\n\n감사합니다.\n유소정 드림`;
   }
@@ -1257,18 +1288,19 @@ function buildDealInsight(deal, messages) {
   const latestExternalText = currentMessageText(latestExternal);
   const allText = usableMessages.map(currentMessageText).join("\n\n");
   const lastFromMe = latest.from && isSenderMe(latest.from);
+  const referenceText = lastFromMe ? latestText : latestExternalText || latestText;
   const conditions = conditionSummaryFromLatest(latestExternalText || latestText, allText, currentMessageText(latestMine || {}), usableMessages);
   const latestSender = senderName(latestExternal.from);
-  const latestSummary = compactSummary(latestExternalText || latestText, 92);
-  const need = lastFromMe ? "상대 답장을 기다리는 상태" : inferNeed(latestExternalText || latestText);
-  const progress = progressFromLatest(latestExternalText || latestText, latestSender, lastFromMe, need);
-  const conversation = conversationSummaryFromLatest(usableMessages, latestExternal, latestMine, latestExternalText || latestText);
+  const latestSummary = compactSummary(referenceText, 92);
+  const need = lastFromMe ? "상대 답장을 기다리는 상태" : inferNeed(referenceText);
+  const progress = progressFromLatest(referenceText, latestSender, lastFromMe, need);
+  const conversation = conversationSummaryFromLatest(usableMessages, latestExternal, latestMine, referenceText);
   const nextSteps = lastFromMe
     ? ["새 회신이 오면 조건 변경 여부를 확인하기", "급한 건이면 2-3일 뒤 가볍게 리마인드하기"]
-    : latestActionSteps(latestExternalText || latestText, need);
+    : latestActionSteps(referenceText, need);
   const draft = lastFromMe
     ? `안녕하세요, ${latestSender}님.\n\n이전 메일 확인 부탁드립니다. 추가로 필요한 내용이 있으면 편하게 말씀 주세요.\n\n감사합니다.\n유소정 드림`
-    : draftFromLatest(latestExternalText || latestText, latestSender, need);
+    : draftFromLatest(referenceText, latestSender, need);
 
   return {
     progress,
