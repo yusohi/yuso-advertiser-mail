@@ -692,6 +692,7 @@ async function syncGmailNow() {
   let skippedNoise = 0;
   let added = 0;
   let changed = 0;
+  const candidates: MailDeal[] = [];
   const refs = Array.from(threadRefs.entries()).map(([id, historyId]) => ({ id, historyId }));
   let cursor = 0;
   const processThread = async (ref: { id: string; historyId: string }) => {
@@ -712,10 +713,7 @@ async function syncGmailNow() {
       skippedDeleted++;
       return;
     }
-    const previous = updated.get(String(deal.id));
-    if (previous) changed++;
-    else added++;
-    updated.set(String(deal.id), previous ? betterStoredDeal(previous, deal) : deal);
+    candidates.push(deal);
   };
   await Promise.all(
     Array.from({ length: Math.min(8, refs.length) }, async () => {
@@ -725,6 +723,14 @@ async function syncGmailNow() {
       }
     }),
   );
+
+  for (const deal of candidates) {
+    const id = String(deal.id || "");
+    const previous = updated.get(id);
+    if (previous) changed++;
+    else added++;
+    updated.set(id, previous ? betterStoredDeal(previous, deal) : deal);
+  }
 
   payload.deals = cleanupDeals(Array.from(updated.values()));
   payload.source = "Gmail OAuth yuso@wootso.com only";
@@ -815,41 +821,6 @@ async function handlePost(req: Request, p: string) {
     } catch (error) {
       return json(req, { error: String(error instanceof Error ? error.message : error) }, 400);
     }
-  }
-
-  if (p === "/api/debug/gmail-thread") {
-    if (!(await verifyPassword(password))) return json(req, { error: "unauthorized" }, 401);
-    const threadId = String(body?.id || "");
-    const accessToken = await refreshAccessToken();
-    const refs = await gmailThreadRefs("newer_than:45d -in:trash -in:spam", accessToken, 1, 20, [YUSO_LABEL_ID]);
-    const thread = threadId ? await gmailJson(`threads/${threadId}?format=full`, accessToken) : undefined;
-    const targetMessages = thread ? messagesForTargetAccount(thread) : [];
-    const deal = thread ? await dealFromThread(thread, accessToken) : undefined;
-    return json(req, {
-      refs,
-      hasRef: refs.some((ref) => ref.id === threadId),
-      threadHistoryId: thread?.historyId || "",
-      rawMessageCount: Array.isArray(thread?.messages) ? thread.messages.length : 0,
-      targetMessageCount: targetMessages.length,
-      targetMessages: targetMessages.map((message) => ({
-        id: message.id,
-        internalDate: message.internalDate,
-        date: messageDate(message),
-        from: header(messageHeaders(message), "From"),
-        to: header(messageHeaders(message), "To"),
-        deliveredTo: header(messageHeaders(message), "Delivered-To"),
-        labels: message.labelIds,
-        subject: header(messageHeaders(message), "Subject"),
-        bodyStart: bodyFromPayload(message.payload as JsonMap | undefined).slice(0, 220),
-      })),
-      isNoise: thread ? isNoiseThread(thread) : null,
-      deal: deal && {
-        id: deal.id,
-        lastTouch: deal.lastTouch,
-        lastTouchIso: deal.lastTouchIso,
-        latest: storedMessages(deal).at(-1),
-      },
-    }, 200);
   }
 
   return json(req, { error: "not_found" }, 404);
