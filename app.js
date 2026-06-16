@@ -1075,33 +1075,94 @@ function conversationSummaryFromLatest(messages, latestExternal, latestMine, lat
   return uniqueItems(items, 4);
 }
 
+function formatScheduleDate(value = "") {
+  return String(value || "")
+    .replace(/\s+/g, " ")
+    .replace(/\((?:월|화|수|목|금|토|일)\)/g, "")
+    .trim();
+}
+
+function latestMatch(text = "", pattern) {
+  const matches = [...String(text || "").matchAll(pattern)];
+  return matches.length ? matches[matches.length - 1] : null;
+}
+
+function inferContentFormat(text = "") {
+  const clean = normalizeVisibleMailText(text);
+  const formats = [];
+  if (/브랜디드|브랜드\s*콘텐츠|branded/i.test(clean)) formats.push("브랜디드 콘텐츠");
+  if (/기획\s*PPL|기획피피엘|기획\s*피피엘/i.test(clean)) formats.push("기획 PPL");
+  else if (/\bPPL\b|피피엘/i.test(clean)) formats.push("PPL");
+  if (/릴스|reels/i.test(clean)) formats.push("릴스");
+  if (/쇼츠|shorts/i.test(clean)) formats.push("쇼츠");
+  if (/피드/.test(clean)) formats.push("피드");
+  if (/블로그/.test(clean)) formats.push("블로그");
+  if (/공동구매|공구/.test(clean)) formats.push("공동구매");
+  return uniqueItems(formats, 3).join(" + ");
+}
+
+function inferContractStatus(text = "") {
+  const clean = normalizeVisibleMailText(text);
+  if (/계약서[^\n]{0,40}(작성\s*전|작성전|전임|아직|미작성)|작성\s*전[^\n]{0,20}계약서/.test(clean)) return "계약서 작성 전";
+  if (/계약서[^\n]{0,40}(작성|서명|날인|완료|체결)|(?:서명|날인|체결)[^\n]{0,30}계약서/.test(clean)) return "계약서 작성/서명 진행";
+  if (/계약|서명|날인/.test(clean)) return "계약서 확인 필요";
+  return "";
+}
+
+function extractDealTerms(messages = [], latestText = "", allText = "") {
+  const cleanAll = normalizeVisibleMailText(allText);
+  const cleanLatest = normalizeVisibleMailText(latestText);
+  const combined = `${cleanAll}\n${cleanLatest}`;
+  const items = [];
+
+  const format = inferContentFormat(combined);
+  const amountMatch = latestMatch(combined, /(?:제품\s*\d+\s*(?:대|개)?\s*\+\s*)?(?:광고비|비용|금액|협력\s*금액|진행|조건)?[^\n]{0,20}?((?:\d{1,3}(?:,\d{3})*|\d+)\s*(?:만\s*)?원?|(?:\d{2,4})\s*(?:vat|VAT)\s*(?:별도|포함)?|\$\s*(?:\d{1,3}(?:,\d{3})*|\d+))/g);
+  const amountText = amountMatch ? amountMatch[0].replace(/\s+/g, " ").trim() : "";
+  if (format || amountText) items.push(`진행 조건: ${[format, amountText].filter(Boolean).join(" · ")}`);
+
+  const uploadMatch = latestMatch(combined, /(?:업로드|게시|최종본\s*확인\s*및\s*업로드)[^\n]{0,26}?(\d{1,2}\s*월\s*\d{1,2}\s*일|\d{1,2}\/\d{1,2}|\d{4}[.\-]\s*\d{1,2}[.\-]\s*\d{1,2})|(?:\d{1,2}\s*월\s*\d{1,2}\s*일|\d{1,2}\/\d{1,2})[^\n]{0,18}(?:업로드|게시)/g);
+  if (uploadMatch) items.push(`업로드: ${formatScheduleDate(uploadMatch[0])}`);
+
+  const exposureMatch = latestMatch(combined, /(?:초반\s*)?\d+\s*(?:~|-)?\s*\d*\s*분대?\s*노출|\d+\s*분\s*이상\s*노출|노출\s*희망[^\n]{0,24}/g);
+  if (exposureMatch) items.push(`노출: ${formatScheduleDate(exposureMatch[0])}`);
+
+  const contractStatus = inferContractStatus(combined);
+  if (contractStatus) items.push(`계약서: ${contractStatus}`);
+
+  const milestoneRules = [
+    ["가이드", /(?:가이드|가이드라인)[^\n]{0,24}?(\d{1,2}\s*월\s*\d{1,2}\s*일|\d{1,2}\/\d{1,2}|전달|확인)/g],
+    ["기획안", /(?:기획안|콘티|원고)[^\n]{0,24}?(\d{1,2}\s*월\s*\d{1,2}\s*일|\d{1,2}\/\d{1,2}|전달|수정|코멘트|확인)/g],
+    ["초안", /(?:초안|가편집|1차본)[^\n]{0,24}?(\d{1,2}\s*월\s*\d{1,2}\s*일|\d{1,2}\/\d{1,2}|전달|수정|확인)/g],
+    ["최종본", /(?:최종본|최종\s*영상|최종)[^\n]{0,24}?(\d{1,2}\s*월\s*\d{1,2}\s*일|\d{1,2}\/\d{1,2}|전달|확인|업로드)/g],
+  ];
+  for (const [label, pattern] of milestoneRules) {
+    const match = latestMatch(combined, pattern);
+    if (match) items.push(`${label}: ${formatScheduleDate(match[0])}`);
+  }
+
+  if (/촬영용\s*제품|제품.*받|제품.*수령/.test(combined)) items.push("제품: 촬영용 제품 수령 완료");
+  if (/주소[^\n]{0,20}(전달|확인)|기존.*주소|배송지.*전달/.test(combined)) items.push("배송: 주소 전달/확인 완료");
+
+  return uniqueItems(items, 7);
+}
+
 function conditionSummaryFromLatest(latestText = "", allText = "", mineText = "") {
   const latest = normalizeVisibleMailText(latestText);
   const intent = latestIntent(latest);
   const all = normalizeVisibleMailText(allText);
   const mine = normalizeVisibleMailText(mineText);
-  const items = [];
+  const items = extractDealTerms([], latest, all);
 
-  if (intent.revision) items.push("기획안/가이드: 수정 코멘트 확인 및 반영 필요");
+  if (intent.revision) items.push("현재 단계: 기획안/가이드 수정 코멘트 반영");
   if (intent.productSelect) items.push("제품: 링크 확인 후 선택 결과 회신 필요");
   if (intent.contract) items.push("계약/정산: 요청 문서 확인 및 처리 필요");
   if (intent.shipping) items.push("배송: 전달 가능한 배송지/연락처 확인 필요");
   if (intent.money) items.push("비용: 광고비/제공 조건 확인 또는 조율 필요");
   if (intent.guide) items.push("가이드: 필수 조건과 레퍼런스 확인 필요");
   if (/그대로\s*촬영\s*진행|촬영\s*진행/.test(latest)) items.push("진행: 반영 어려운 부분이 없으면 그대로 촬영 진행");
-  if (/가이드라인|가이드|제품\s*정보|제품정보/.test(all)) items.push("자료: 가이드라인과 제품 정보안 확인 완료");
   if (/촬영용\s*제품|제품.*받|제품.*수령/.test(mine)) items.push("제품: 촬영용 제품 수령 완료");
-  if (/기존.*주소|전달.*주소|주소지/.test(all)) items.push("배송: 기존 전달 주소 기준으로 처리됨");
 
-  const amountSource = latest || all;
-  const amountMatches = [...amountSource.matchAll(/(?:광고비|비용|금액|협력\s*금액|정산|입금)[^\n]{0,28}?((?:\d{1,3}(?:,\d{3})*|\d+)\s*(?:만\s*)?원|\$?\s*(?:\d{1,3}(?:,\d{3})*|\d+))/g)]
-    .map((match) => match[0].replace(/\s+/g, " ").trim());
-  if (amountMatches.length) items.push(`비용: ${amountMatches[amountMatches.length - 1]}`);
-
-  const dateMatches = [...all.matchAll(/\d{1,2}\s*월\s*\d{1,2}\s*일|\d{4}[.\-]\s*\d{1,2}[.\-]\s*\d{1,2}|이번\s*주|다음\s*주|금주|내일|오늘/g)].map((match) => match[0]);
-  if (dateMatches.length) items.push(`일정: ${dateMatches[dateMatches.length - 1]}`);
-
-  return uniqueItems(items.length ? items : extractConditions(latest || all), 6);
+  return uniqueItems(items.length ? items : extractConditions(latest || all), 7);
 }
 
 function draftFromLatest(latestText = "", sender = "담당자", need = "") {
