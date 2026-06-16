@@ -995,6 +995,101 @@ function isInitialProposal(clean = "") {
   return proposal && !active;
 }
 
+function firstSentence(text = "", length = 96) {
+  const clean = normalizeVisibleMailText(text).replace(/\s+/g, " ").trim();
+  const sentence = clean.split(/(?:다\.|요\.|니다\.|[!?]\s)/)[0] || clean;
+  return sentence.slice(0, length).trim();
+}
+
+function extractQuotedNames(text = "") {
+  return [...String(text || "").matchAll(/[<《「『'“‘"]([^<》」』'”’"]{2,50})[>》」』'”’"]/g)]
+    .map((match) => match[1].replace(/\s+/g, " ").trim())
+    .filter((item) => !/https?|mailto|@|유소|크리에이터|youtube|instagram/i.test(item));
+}
+
+function proposalSubject(text = "") {
+  const clean = normalizeVisibleMailText(text);
+  const quoted = extractQuotedNames(clean).find((item) => /(젤리|식품|제품|서비스|브랜드|캠페인|PPL|콘텐츠|앱|플랫폼|클렌징|치약|세럼|크림|샴푸|영양제|기기|투어|호텔|숙소|가전|생활|뷰티|푸드)/i.test(item));
+  if (quoted) return quoted;
+  const patterns = [
+    /(?:브랜드|제품|서비스|캠페인)\s*(?:명|이름)?\s*[:：]?\s*([^\n.]{2,60})/,
+    /(?:진행하는|준비\s*중인)\s*([^\n.]{2,60}?(?:브랜드|캠페인|제품|서비스|프로모션))/,
+    /([가-힣A-Za-z0-9&+\s]{2,40}?(?:젤리|식품|제품|서비스|캠페인|브랜드|PPL|콘텐츠|앱|플랫폼|클렌징|치약|세럼|크림|샴푸|영양제|기기))/
+  ];
+  for (const pattern of patterns) {
+    const match = clean.match(pattern);
+    if (match?.[1]) return match[1].replace(/\s+/g, " ").replace(/^(관련|대한|있는)\s*/, "").trim().slice(0, 60);
+  }
+  return "";
+}
+
+function requestedRateLabels(text = "") {
+  const clean = normalizeVisibleMailText(text);
+  const labels = [];
+  if (/브랜디드|브랜드\s*콘텐츠|단독\s*기획/i.test(clean)) labels.push("branded");
+  if (/기획\s*PPL|기획형\s*PPL|기획\s*피피엘|제품\s*3분|3분\s*노출/i.test(clean)) labels.push("plannedPpl");
+  if (/(?:일반|단순)\s*PPL|콘텐츠\s*내\s*언급|기획\s*참여\s*불가/i.test(clean)) labels.push("generalPpl");
+  if (/쇼츠|shorts/i.test(clean)) labels.push("shorts");
+  if (/숏폼\s*패키지|릴스|틱톡|reels|tiktok/i.test(clean)) labels.push("shortPackage");
+  if (/파생\s*쇼츠|브랜디드[^\n]{0,30}쇼츠/i.test(clean)) labels.push("brandedShorts");
+  if (/2차\s*활용|구글애즈|메타|틱톡\s*광고|광고\s*소재|소재\s*활용/i.test(clean)) labels.push("usage");
+  if (!labels.length && /광고비|단가|견적|비용|금액|rate|fee|budget/i.test(clean)) {
+    const formats = inferContentFormat(clean);
+    if (/브랜디드/.test(formats)) labels.push("branded");
+    if (/기획 PPL|PPL/.test(formats)) labels.push("plannedPpl");
+    if (/쇼츠/.test(formats)) labels.push("shorts");
+  }
+  return uniqueItems(labels, 8);
+}
+
+function rateLinesForLabels(labels = []) {
+  const rateMap = {
+    branded: "브랜디드 콘텐츠: 400만원 (VAT 별도)",
+    plannedPpl: "기획형 PPL (제품 3분 노출): 300만원 (VAT 별도)",
+    generalPpl: "일반 PPL (콘텐츠 내 언급 및 노출 / 기획 참여 불가): 150만원 (VAT 별도)",
+    shorts: "쇼츠 콘텐츠: 150만원 (VAT 별도)",
+    shortPackage: "숏폼 패키지 (유튜브 쇼츠 + 릴스 + 틱톡): 300만원 (VAT 별도)",
+    brandedShorts: "브랜디드 콘텐츠 + 파생 쇼츠 패키지 (유튜브): 500만원 (VAT 별도)",
+  };
+  const out = labels.filter((label) => label !== "usage").map((label) => rateMap[label]).filter(Boolean);
+  if (labels.includes("usage")) {
+    out.push("2차 활용 비용(구글애즈, 메타, 틱톡 가능 / 최종 영상 그대로 사용 조건)");
+    out.push("- 1개월: 100만원 (VAT 별도)");
+    out.push("- 3개월: 200만원 (VAT 별도)");
+  }
+  return out;
+}
+
+function proposalSummaryItems(text = "", latestExternal = {}) {
+  const clean = normalizeVisibleMailText(text);
+  const subject = proposalSubject(clean);
+  const formats = inferContentFormat(clean);
+  const rateLabels = requestedRateLabels(clean);
+  const items = [];
+  if (subject) items.push(`제안 내용: ${subject} 관련 광고/협업 문의`);
+  else items.push(`제안 내용: ${firstSentence(clean, 86)}`);
+  if (formats) items.push(`희망 형태: ${formats}`);
+  if (rateLabels.length) {
+    const names = rateLabels
+      .filter((label) => label !== "usage")
+      .map((label) => ({
+        branded: "브랜디드",
+        plannedPpl: "기획형 PPL",
+        generalPpl: "일반 PPL",
+        shorts: "쇼츠",
+        shortPackage: "숏폼 패키지",
+        brandedShorts: "브랜디드+쇼츠 패키지",
+      })[label])
+      .filter(Boolean);
+    items.push(`요청: ${names.length ? `${names.join(", ")} 단가` : "광고 단가"}${rateLabels.includes("usage") ? "와 2차 활용 비용" : ""} 확인`);
+  } else if (/광고비|단가|견적|비용|금액|rate|fee|budget/i.test(clean)) {
+    items.push("요청: 광고비/진행 비용 안내");
+  }
+  if (/일정|업로드|촬영|게시|마감|희망\s*일|스케줄/i.test(clean)) items.push("요청: 촬영/업로드 가능 일정 확인");
+  if (/진행\s*가능|가능\s*여부|참여|검토|관심|회신|답변|문의/i.test(clean)) items.push("요청: 진행 가능 여부 회신");
+  return uniqueItems(items, 4);
+}
+
 function latestIntent(text = "") {
   const clean = normalizeVisibleMailText(text);
   return {
@@ -1079,8 +1174,7 @@ function conversationSummaryFromLatest(messages, latestExternal, latestMine, lat
     items.push("최근: 상대가 기획안/가이드/원고 수정 의견을 전달했고, 반영 여부를 알려달라고 함");
     if (/그대로\s*촬영\s*진행|촬영\s*진행/.test(cleanLatest)) items.push("진행: 큰 수정은 거의 없어서 코멘트 반영 후 그대로 촬영 진행하면 되는 상태");
   } else if (intent.initialProposal) {
-    const name = senderName(latestExternal?.from);
-    items.push(`최근: ${name}${subjectParticle(name)} 광고/협업 제안을 보냈고, 진행 가능 여부 검토가 필요한 상태`);
+    items.push(...proposalSummaryItems(cleanLatest, latestExternal));
   } else if (intent.productSelect) {
     items.push("최근: 상대가 제품/상품 링크 확인 또는 셀렉 결과 회신을 요청함");
   } else if (intent.contract) {
@@ -1103,7 +1197,9 @@ function conversationSummaryFromLatest(messages, latestExternal, latestMine, lat
     items.push(`내 답장: ${compactSummary(mineText, 86)}`);
   }
 
-  if (/선물|제품.*보내|협업|광고|브랜드|캠페인|PPL/i.test(firstText)) {
+  if (intent.initialProposal) {
+    // The proposal summary above already captures the concrete request.
+  } else if (/선물|제품.*보내|협업|광고|브랜드|캠페인|PPL/i.test(firstText)) {
     items.push("시작: 브랜드가 제품 협업/광고 제안으로 연락을 시작함");
   } else if (firstText && firstText !== cleanLatest) {
     items.push(`시작: ${compactSummary(firstText, 86)}`);
@@ -1276,10 +1372,21 @@ function conditionSummaryFromLatest(latestText = "", allText = "", mineText = ""
   return uniqueItems(items.length ? items : extractConditions(latest || all), 6);
 }
 
-function draftFromLatest(latestText = "", sender = "담당자", need = "") {
+function salutationName(value = "") {
+  return senderName(value).replace(/\s*담당자\s*$/g, "").trim() || "담당자";
+}
+
+function draftFromLatest(latestText = "", sender = "담당자", need = "", options = {}) {
   const intent = latestIntent(latestText);
   if (intent.initialProposal) {
-    return `안녕하세요, ${sender}님.\n\n제안 주신 내용 확인했습니다.\n유소 채널과의 방향성, 희망 콘텐츠 형태, 제공 제품 및 광고비 조건을 함께 검토해보겠습니다.\n\n진행 가능 여부 확인 후 답장드리겠습니다.\n\n감사합니다.\n유소정 드림`;
+    const name = salutationName(sender);
+    const subject = proposalSubject(latestText) || "보내주신 캠페인";
+    const rateLines = rateLinesForLabels(requestedRateLabels(latestText));
+    const intro = options.isFirstReply
+      ? `안녕하세요 ${name} 담당자님!\n유튜브 채널 유소를 운영하고 있는 유소정입니다^^`
+      : `안녕하세요 ${name} 담당자님!\n유소정입니다☺️`;
+    const rateBlock = rateLines.length ? `\n\n비용은 아래와 같습니다.\n\n${rateLines.join("\n")}` : "";
+    return `${intro}\n\n제 콘텐츠를 좋게 봐주시고 연락 주셔서 감사합니다.\n보내주신 ${subject} 제안 잘 확인했습니다.\n\n유소 채널의 자연스러운 일상 콘텐츠 흐름 안에서 제품과 브랜드의 장점을 잘 풀어낼 수 있을지 검토해보겠습니다.${rateBlock}\n\n궁금하신 점이나 협의가 필요하신 부분이 있으면 편하게 연락 부탁드립니다.\n\n감사합니다.\n유소정 드림`;
   }
   if (intent.revision) {
     return `안녕하세요, ${sender}님.\n\n기획안에 남겨주신 수정 코멘트 확인했습니다.\n말씀주신 부분 반영해서 진행하겠습니다.\n\n혹시 반영이 어려운 부분이 생기면 바로 다시 말씀드리고,\n특이사항 없으면 기존 일정대로 촬영 진행하겠습니다.\n\n감사합니다.\n유소정 드림`;
@@ -1325,7 +1432,7 @@ function buildDealInsight(deal, messages) {
     : latestActionSteps(referenceText, need);
   const draft = lastFromMe
     ? `안녕하세요, ${latestSender}님.\n\n이전 메일 확인 부탁드립니다. 추가로 필요한 내용이 있으면 편하게 말씀 주세요.\n\n감사합니다.\n유소정 드림`
-    : draftFromLatest(referenceText, latestSender, need);
+    : draftFromLatest(referenceText, latestSender, need, { isFirstReply: !latestMine });
 
   return {
     progress,
@@ -1412,7 +1519,6 @@ function renderDetail() {
       <section class="section insight-card">
         <h3>현재 어디까지 왔는지</h3>
         <p class="lead-text">${escapeHtml(insight.progress)}</p>
-        <p class="muted">${escapeHtml(insight.latestSummary || deal.oneLine || "")}</p>
       </section>
       <section class="section action-card">
         <h3>다음 액션</h3>
