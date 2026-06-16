@@ -474,10 +474,13 @@ function betterStoredDeal(left: MailDeal, right: MailDeal) {
   const leftHasGmail = /^https:\/\/mail\.google\.com/i.test(String(left.gmail || ""));
   const rightHasGmail = /^https:\/\/mail\.google\.com/i.test(String(right.gmail || ""));
   if (leftHasGmail !== rightHasGmail) return leftHasGmail ? left : right;
+  const leftDate = storedDealDate(left).getTime();
+  const rightDate = storedDealDate(right).getTime();
+  if (leftDate !== rightDate) return leftDate > rightDate ? left : right;
   const leftMessages = storedMessages(left).length;
   const rightMessages = storedMessages(right).length;
   if (leftMessages !== rightMessages) return leftMessages > rightMessages ? left : right;
-  return storedDealDate(left) >= storedDealDate(right) ? left : right;
+  return left;
 }
 
 function cleanupDeals(deals: MailDeal[] = []) {
