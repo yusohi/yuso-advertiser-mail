@@ -923,6 +923,13 @@ function senderName(value = "") {
     .trim() || "담당자";
 }
 
+function subjectParticle(value = "") {
+  const text = String(value || "").trim();
+  const last = text.charCodeAt(text.length - 1);
+  if (last < 0xac00 || last > 0xd7a3) return "가";
+  return (last - 0xac00) % 28 === 0 ? "가" : "이";
+}
+
 function currentMessageText(message) {
   return normalizeVisibleMailText(splitQuotedBody(cleanMailText(message?.body || "")).current || message?.body || "");
 }
@@ -1025,7 +1032,6 @@ function latestActionSteps(text = "", need = "") {
     steps.push("브랜드와 제안 제품이 유소 채널에 맞는지 확인하기");
     steps.push("진행할지, 유료 광고 조건이 필요한지 답장하기");
     if (intent.schedule) steps.push("원하는 촬영/업로드 일정이 있는지 확인하기");
-    steps.push(need);
     return uniqueItems(steps, 4);
   }
   if (intent.revision) {
@@ -1073,7 +1079,8 @@ function conversationSummaryFromLatest(messages, latestExternal, latestMine, lat
     items.push("최근: 상대가 기획안/가이드/원고 수정 의견을 전달했고, 반영 여부를 알려달라고 함");
     if (/그대로\s*촬영\s*진행|촬영\s*진행/.test(cleanLatest)) items.push("진행: 큰 수정은 거의 없어서 코멘트 반영 후 그대로 촬영 진행하면 되는 상태");
   } else if (intent.initialProposal) {
-    items.push(`최근: ${senderName(latestExternal?.from)}가 광고/협업 제안을 보냈고, 진행 가능 여부 검토가 필요한 상태`);
+    const name = senderName(latestExternal?.from);
+    items.push(`최근: ${name}${subjectParticle(name)} 광고/협업 제안을 보냈고, 진행 가능 여부 검토가 필요한 상태`);
   } else if (intent.productSelect) {
     items.push("최근: 상대가 제품/상품 링크 확인 또는 셀렉 결과 회신을 요청함");
   } else if (intent.contract) {
