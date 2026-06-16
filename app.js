@@ -1030,8 +1030,8 @@ function requestedRateLabels(text = "") {
   if (/기획\s*PPL|기획형\s*PPL|기획\s*피피엘|제품\s*3분|3분\s*노출/i.test(clean)) labels.push("plannedPpl");
   if (/(?:일반|단순)\s*PPL|콘텐츠\s*내\s*언급|기획\s*참여\s*불가/i.test(clean)) labels.push("generalPpl");
   if (/쇼츠|shorts/i.test(clean)) labels.push("shorts");
-  if (/숏폼\s*패키지|릴스|틱톡|reels|tiktok/i.test(clean)) labels.push("shortPackage");
-  if (/파생\s*쇼츠|브랜디드[^\n]{0,30}쇼츠/i.test(clean)) labels.push("brandedShorts");
+  if (/숏폼\s*패키지|(?:쇼츠|shorts)[^\n]{0,30}(?:릴스|reels)[^\n]{0,30}(?:틱톡|tiktok)|(?:릴스|reels)[^\n]{0,30}(?:틱톡|tiktok)/i.test(clean)) labels.push("shortPackage");
+  if (/브랜디드\s*콘텐츠?\s*\+\s*(?:파생\s*)?쇼츠\s*패키지|파생\s*쇼츠\s*패키지/i.test(clean)) labels.push("brandedShorts");
   if (/2차\s*활용|구글애즈|메타|틱톡\s*광고|광고\s*소재|소재\s*활용/i.test(clean)) labels.push("usage");
   if (!labels.length && /광고비|단가|견적|비용|금액|rate|fee|budget/i.test(clean)) {
     const formats = inferContentFormat(clean);
