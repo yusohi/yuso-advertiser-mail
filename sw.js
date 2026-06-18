@@ -1,4 +1,4 @@
-const CACHE_VERSION = "yuso-mail-v2026-06-17-specific-summary-draft-2";
+const CACHE_VERSION = "yuso-mail-v2026-06-19-gmail-reauth";
 const APP_SHELL = ["./", "./index.html", "./styles.css", "./app.js", "./manifest.webmanifest", "./icon.svg"];
 
 self.addEventListener("install", (event) => {

@@ -420,7 +420,9 @@ async function postPrivate(url, body = {}) {
         ? "Google OAuth 설정이 아직 필요합니다."
         : data.error === "gmail_not_connected"
           ? "Gmail 연결이 아직 필요합니다."
-          : data.error || `HTTP ${response.status}`;
+          : data.error === "gmail_reauth_required"
+            ? "Gmail 연결이 만료되어 다시 연결합니다."
+            : data.error || `HTTP ${response.status}`;
     const error = new Error(message);
     error.data = data;
     throw error;
@@ -475,6 +477,11 @@ async function connectGmail() {
   }
 }
 
+function isGmailReauthError(error) {
+  const text = `${error?.data?.error || ""} ${error?.message || ""}`;
+  return /gmail_reauth_required|gmail_refresh_failed|invalid_grant|expired|revoked/i.test(text);
+}
+
 async function ensureGmailReady() {
   const status = await refreshGmailStatus();
   if (!status) return;
@@ -503,6 +510,12 @@ async function syncGmailNow({ silent = false } = {}) {
     await loadDeals({ manual: true });
   } catch (error) {
     state.lastError = "Gmail 동기화 필요";
+    if (isGmailReauthError(error)) {
+      state.gmailConnected = false;
+      showToast("Gmail 연결이 만료되어 다시 연결합니다.");
+      await connectGmail();
+      return;
+    }
     if (!silent) showToast(error.message || "Gmail 동기화 실패");
     await loadDeals({ manual: true });
   } finally {
