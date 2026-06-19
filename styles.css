@@ -939,6 +939,14 @@ body.desktop-detail-open .dashboard {
   background: var(--green);
 }
 
+.deal-row-actions {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 4px;
+  padding-right: 4px;
+}
+
 .deal-button {
   display: grid;
   grid-template-columns: 44px minmax(0, 1fr);
@@ -990,17 +998,30 @@ body.desktop-detail-open .dashboard {
   min-width: 0;
 }
 
+.archive-deal,
 .delete-deal {
   display: grid;
   place-items: center;
-  width: 42px;
-  min-height: 42px;
+  width: 34px;
+  min-height: 34px;
+  border-radius: 999px;
   border: 0;
   background: transparent;
   color: var(--muted);
-  font-size: 22px;
+  font-size: 20px;
   line-height: 1;
   cursor: pointer;
+}
+
+.archive-deal {
+  font-size: 18px;
+}
+
+.archive-deal:hover,
+.archive-deal:focus {
+  color: var(--green);
+  background: #eafff2;
+  outline: 0;
 }
 
 .delete-deal:hover,
@@ -1875,8 +1896,14 @@ body.compact.desktop-detail-open .dashboard {
     font-size: 14px;
   }
 
+  .deal-row-actions {
+    padding-right: 8px;
+  }
+
+  .archive-deal,
   .delete-deal {
-    width: 48px;
+    width: 40px;
+    min-height: 40px;
   }
 
   .detail {
@@ -2255,8 +2282,14 @@ body.compact.desktop-detail-open .dashboard {
     font-size: 14px;
   }
 
+  .deal-row-actions {
+    padding-right: 2px;
+  }
+
+  .archive-deal,
   .delete-deal {
-    width: 38px;
+    width: 34px;
+    min-height: 34px;
     font-size: 20px;
   }
 

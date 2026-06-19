@@ -14,6 +14,8 @@ const GMAIL_SYNC_URL = "https://bsmfvlodkqyfawsppjno.supabase.co/functions/v1/yu
 const PASSWORD_KEY = "yuso-mail-password";
 const LAYOUT_KEY = "yuso-mail-layout";
 const GMAIL_AUTO_CONNECT_KEY = "yuso-mail-gmail-auto-connect-attempted";
+const HIDDEN_DEALS_KEY = "yuso-mail-hidden-deals";
+const ARCHIVED_DEALS_KEY = "yuso-mail-archived-deals";
 const PASSWORD_COOKIE_MAX_AGE = 60 * 60 * 24 * 30;
 
 const state = {
@@ -67,6 +69,23 @@ function storageSet(key, value) {
 function storageRemove(key) {
   try {
     localStorage.removeItem(key);
+  } catch {
+    // Safari private or in-app sessions can reject localStorage.
+  }
+}
+
+function readStoredSet(key) {
+  try {
+    const value = JSON.parse(localStorage.getItem(key) || "[]");
+    return new Set(Array.isArray(value) ? value.map(String) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function writeStoredSet(key, values) {
+  try {
+    localStorage.setItem(key, JSON.stringify([...values].map(String)));
   } catch {
     // Safari private or in-app sessions can reject localStorage.
   }
@@ -716,8 +735,42 @@ function isWootsoCompanyDeal(deal) {
   return /웃소|wootso/i.test(primaryText) && !/(유소|유소정|소정|yuso\.hi|yuso@wootso\.com)/i.test(primaryText);
 }
 
+function isNewsletterDeal(deal) {
+  const latestExternal = latestExternalMessage(deal);
+  const text = [
+    deal?.advertiser,
+    deal?.contact,
+    deal?.brand,
+    deal?.oneLine,
+    deal?.nextAction,
+    currentMessageText(latestExternal).slice(0, 1600),
+  ].join(" ");
+  const newsletterSignals =
+    /(뉴스레터|트렌드\s*레터|레터\s*이미지|구독|수신\s*거부|unsubscribe|view\s+in\s+browser|read\s+online|weekly\s+digest|digest|vol\.\s*\d+|월드컵특수|리스크체크|오미영피자|캐릿|careet)/i;
+  const advertiserSignals =
+    /(협업|광고|광고주|브랜디드|ppl|기획\s*ppl|제안|견적|광고비|계약|서명|업로드|촬영|제품\s*제공|시딩|진행\s*가능|회신|답장\s*부탁)/i;
+  return newsletterSignals.test(text) && !advertiserSignals.test(text);
+}
+
+function dealStorageKeys(deal) {
+  return [deal?.id, dealDedupeKey(deal)].filter(Boolean).map(String);
+}
+
+function isLocallyHiddenDeal(deal) {
+  const hidden = readStoredSet(HIDDEN_DEALS_KEY);
+  const archived = readStoredSet(ARCHIVED_DEALS_KEY);
+  return dealStorageKeys(deal).some((key) => hidden.has(key) || archived.has(key));
+}
+
+function rememberDealState(key, deal) {
+  const stored = readStoredSet(key);
+  for (const value of dealStorageKeys(deal)) stored.add(value);
+  writeStoredSet(key, stored);
+}
+
 function isAdvertisingDeal(deal) {
   if (!/^https:\/\/mail\.google\.com/i.test(String(deal?.gmail || ""))) return false;
+  if (isNewsletterDeal(deal)) return false;
   const latestExternal = latestExternalMessage(deal);
   const text = [
     deal?.advertiser,
@@ -727,7 +780,7 @@ function isAdvertisingDeal(deal) {
     deal?.nextAction,
     currentMessageText(latestExternal).slice(0, 1200),
   ].join(" ");
-  const blocked = /(mrbeastcollab\.sbs|grammarly manager shared|dropsend collaboration|이용권 만료|newsletter|notification|no-?reply|google events|eventsatgoogle|creator club|크리에이터 클럽|final reminder|초대합니다)/i.test(text);
+  const blocked = /(mrbeastcollab\.sbs|grammarly manager shared|dropsend collaboration|이용권 만료|newsletter|notification|no-?reply|google events|eventsatgoogle|creator club|크리에이터 클럽|final reminder|초대합니다|뉴스레터|트렌드\s*레터|수신\s*거부|unsubscribe|weekly\s+digest|digest|vol\.\s*\d+)/i.test(text);
   if (blocked) return false;
   return true;
 }
@@ -761,6 +814,7 @@ function normalizeDeals(list = []) {
   const unique = new Map();
   for (const deal of Array.isArray(list) ? list : []) {
     if (!deal || isWootsoCompanyDeal(deal)) continue;
+    if (isLocallyHiddenDeal(deal)) continue;
     if (!isAdvertisingDeal(deal)) continue;
     const key = dealDedupeKey(deal);
     const current = unique.get(key);
@@ -1269,7 +1323,10 @@ function renderList() {
               <span class="deal-meta">마지막 메일 ${escapeHtml(deal.lastTouch)}</span>
             </span>
           </button>
-          <button class="delete-deal" data-delete-id="${escapeAttr(deal.id)}" aria-label="${escapeAttr(deal.advertiser)} 삭제" type="button">×</button>
+          <span class="deal-row-actions">
+            <button class="archive-deal" data-archive-id="${escapeAttr(deal.id)}" aria-label="${escapeAttr(deal.advertiser)} 보관" title="보관" type="button">⌄</button>
+            <button class="delete-deal" data-delete-id="${escapeAttr(deal.id)}" aria-label="${escapeAttr(deal.advertiser)} 삭제" title="삭제" type="button">×</button>
+          </span>
         </div>
       `;
       },
@@ -2075,22 +2132,38 @@ document.addEventListener("click", (event) => {
     if (!deal) return;
     if (!confirm(`${deal.advertiser} 메일을 목록에서 삭제할까요?`)) return;
 
+    rememberDealState(HIDDEN_DEALS_KEY, deal);
+    deals = deals.filter((item) => item.id !== id);
+    if (state.selectedId === id) {
+      state.selectedId = filteredDeals()[0]?.id || deals[0]?.id || "";
+    }
+    render();
     deleteButton.disabled = true;
     deleteDeal(id)
       .then(() => {
-        deals = deals.filter((item) => item.id !== id);
-        if (state.selectedId === id) {
-          state.selectedId = filteredDeals()[0]?.id || deals[0]?.id || "";
-        }
-        render();
         showToast("메일을 삭제했습니다.");
       })
       .catch(() => {
-        showToast("삭제하지 못했습니다.");
+        showToast("목록에서 숨겼습니다. 서버 삭제는 나중에 다시 시도됩니다.");
       })
       .finally(() => {
         deleteButton.disabled = false;
       });
+    return;
+  }
+
+  const archiveButton = event.target.closest("[data-archive-id]");
+  if (archiveButton) {
+    const id = archiveButton.dataset.archiveId;
+    const deal = deals.find((item) => item.id === id);
+    if (!deal) return;
+    rememberDealState(ARCHIVED_DEALS_KEY, deal);
+    deals = deals.filter((item) => item.id !== id);
+    if (state.selectedId === id) {
+      state.selectedId = filteredDeals()[0]?.id || deals[0]?.id || "";
+    }
+    render();
+    showToast("보관했습니다. 새로고침해도 목록에 뜨지 않습니다.");
     return;
   }
 
