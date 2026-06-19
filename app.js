@@ -18,6 +18,8 @@ const PASSWORD_COOKIE_MAX_AGE = 60 * 60 * 24 * 30;
 
 const state = {
   selectedId: "",
+  view: "dashboard",
+  returnView: "dashboard",
   filter: "all",
   query: "",
   updatedAt: "불러오는 중",
@@ -834,6 +836,276 @@ function sortForCurrentFilter(items) {
   return items.sort(sortByRecent);
 }
 
+function formatDashboardDate(date) {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return "";
+  return `${date.getMonth() + 1}.${date.getDate()}`;
+}
+
+function formatCalendarKey(date) {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return "";
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${date.getFullYear()}-${month}-${day}`;
+}
+
+function parseScheduleToken(token = "", baseDate = new Date()) {
+  const text = String(token || "").replace(/\s+/g, " ").trim();
+  if (!text) return null;
+  if (/오늘/.test(text)) return new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate());
+  if (/내일/.test(text)) return new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate() + 1);
+
+  let match = text.match(/(\d{4})[.\-/]\s*(\d{1,2})[.\-/]\s*(\d{1,2})/);
+  if (match) return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+
+  match = text.match(/(\d{1,2})\s*월\s*(\d{1,2})\s*일/);
+  if (match) return new Date(baseDate.getFullYear(), Number(match[1]) - 1, Number(match[2]));
+
+  match = text.match(/\b(\d{1,2})\/(\d{1,2})\b/);
+  if (match) return new Date(baseDate.getFullYear(), Number(match[1]) - 1, Number(match[2]));
+
+  return null;
+}
+
+function scheduleLabelFromLine(line = "") {
+  const text = normalizeVisibleMailText(line).replace(/\s+/g, " ").trim();
+  if (/업로드|게시/.test(text)) return "업로드";
+  if (/촬영/.test(text)) return "촬영";
+  if (/가편|초안|시안/.test(text)) return "초안/가편";
+  if (/최종|컨펌|확정/.test(text)) return "최종 확인";
+  if (/기획안|콘티|원고/.test(text)) return "기획안";
+  if (/가이드/.test(text)) return "가이드";
+  if (/계약|서명/.test(text)) return "계약서";
+  if (/마감|deadline/i.test(text)) return "마감";
+  if (/회신|답장/.test(text)) return "답장";
+  return "일정";
+}
+
+function scheduleEventsForDeal(deal) {
+  const messages = dealMessages(deal);
+  const events = [];
+  for (const message of messages) {
+    const receivedAt = parseDealDate({ lastTouchIso: message.dateIso, lastTouch: message.date });
+    if (receivedAt.getTime() > 0) {
+      events.push({
+        type: "mail",
+        date: receivedAt,
+        key: formatCalendarKey(receivedAt),
+        deal,
+        title: "메일 도착",
+        text: `${deal.advertiser} 메일`,
+      });
+    }
+
+    const baseDate = receivedAt.getTime() > 0 ? receivedAt : parseDealDate(deal);
+    const lines = normalizeVisibleMailText(currentMessageText(message))
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
+    for (const line of lines) {
+      if (!/(일정|업로드|게시|촬영|기획안|가이드|마감|초안|가편|최종|계약|서명|회신|답장|\d{1,2}\s*월\s*\d{1,2}\s*일|\d{1,2}\/\d{1,2})/i.test(line)) continue;
+      const tokens = line.match(/\d{4}[.\-/]\s*\d{1,2}[.\-/]\s*\d{1,2}|\d{1,2}\s*월\s*\d{1,2}\s*일|\b\d{1,2}\/\d{1,2}\b|오늘|내일/g) || [];
+      for (const token of tokens) {
+        const date = parseScheduleToken(token, baseDate);
+        if (!date || Number.isNaN(date.getTime())) continue;
+        events.push({
+          type: "schedule",
+          date,
+          key: formatCalendarKey(date),
+          deal,
+          title: scheduleLabelFromLine(line),
+          text: messageSnippet(line, 70),
+        });
+      }
+    }
+  }
+  return events;
+}
+
+function dashboardItems() {
+  return deals.map((deal) => {
+    const messages = dealMessages(deal);
+    const insight = buildDealInsight(deal, messages);
+    const priority = dealPriority(deal);
+    return {
+      deal,
+      insight,
+      priority,
+      lastDate: parseDealDate(deal),
+      action: insight.nextSteps[0] || deal.nextAction || "메일 내용 확인하기",
+    };
+  });
+}
+
+function allCalendarEvents() {
+  const seen = new Set();
+  return deals
+    .flatMap(scheduleEventsForDeal)
+    .filter((event) => {
+      const key = [event.type, event.key, event.deal.id, event.title, event.text].join("|");
+      if (!event.key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .sort((a, b) => a.date.getTime() - b.date.getTime());
+}
+
+function renderPriorityTasks(items) {
+  const tasks = items
+    .filter((item) => item.deal.status === "reply" || ["urgent", "soon"].includes(item.priority.level))
+    .sort((a, b) => b.priority.score - a.priority.score || b.lastDate.getTime() - a.lastDate.getTime())
+    .slice(0, 6);
+  if (!tasks.length) return `<p class="dashboard-empty">지금 바로 답장할 메일은 없습니다.</p>`;
+  return tasks
+    .map((item, index) => `
+      <button class="task-card ${escapeAttr(item.priority.level)}" data-id="${escapeAttr(item.deal.id)}" type="button">
+        <span class="task-rank">${index + 1}</span>
+        <span class="task-body">
+          <strong>${escapeHtml(item.deal.advertiser)}</strong>
+          <span>${highlightImportantText(item.action)}</span>
+          <small>${escapeHtml(item.priority.label)} · 마지막 메일 ${escapeHtml(item.deal.lastTouch || formatDashboardDate(item.lastDate))}</small>
+        </span>
+      </button>
+    `)
+    .join("");
+}
+
+function renderCalendar(events) {
+  const today = new Date();
+  const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+  const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+  const start = new Date(monthStart);
+  start.setDate(1 - monthStart.getDay());
+  const cells = Array.from({ length: 42 }, (_, index) => {
+    const date = new Date(start);
+    date.setDate(start.getDate() + index);
+    return date;
+  });
+  const grouped = events.reduce((map, event) => {
+    const list = map.get(event.key) || [];
+    list.push(event);
+    map.set(event.key, list);
+    return map;
+  }, new Map());
+  const weekdays = ["일", "월", "화", "수", "목", "금", "토"];
+  return `
+    <div class="mini-calendar">
+      <div class="calendar-head">
+        <strong>${today.getFullYear()}.${today.getMonth() + 1}</strong>
+        <span>메일 도착 + 일정</span>
+      </div>
+      <div class="calendar-weekdays">${weekdays.map((day) => `<span>${day}</span>`).join("")}</div>
+      <div class="calendar-grid">
+        ${cells.map((date) => {
+          const key = formatCalendarKey(date);
+          const dayEvents = grouped.get(key) || [];
+          const inMonth = date >= monthStart && date <= monthEnd;
+          const isToday = key === formatCalendarKey(today);
+          const hasSchedule = dayEvents.some((event) => event.type === "schedule");
+          const hasMail = dayEvents.some((event) => event.type === "mail");
+          return `
+            <button class="calendar-day ${inMonth ? "" : "muted-day"} ${isToday ? "today" : ""}" data-calendar-day="${key}" type="button">
+              <span>${date.getDate()}</span>
+              <em class="${hasSchedule ? "has-schedule" : hasMail ? "has-mail" : ""}">${dayEvents.length ? dayEvents.length : ""}</em>
+            </button>
+          `;
+        }).join("")}
+      </div>
+    </div>
+  `;
+}
+
+function renderUpcomingEvents(events) {
+  const today = new Date();
+  const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+  const upcoming = events
+    .filter((event) => event.type === "schedule" && event.date.getTime() >= todayStart - 1000 * 60 * 60 * 24)
+    .slice(0, 7);
+  if (!upcoming.length) return `<p class="dashboard-empty">메일에서 잡힌 예정 일정이 아직 없습니다.</p>`;
+  return upcoming.map((event) => `
+    <button class="schedule-item" data-id="${escapeAttr(event.deal.id)}" type="button">
+      <time>${escapeHtml(formatDashboardDate(event.date))}</time>
+      <span>
+        <strong>${escapeHtml(event.title)} · ${escapeHtml(event.deal.advertiser)}</strong>
+        <small>${highlightImportantText(event.text)}</small>
+      </span>
+    </button>
+  `).join("");
+}
+
+function renderRecentMail(items) {
+  return items
+    .sort((a, b) => b.lastDate.getTime() - a.lastDate.getTime())
+    .slice(0, 5)
+    .map((item) => `
+      <button class="recent-mail-item" data-id="${escapeAttr(item.deal.id)}" type="button">
+        ${avatarMarkup(item.deal.advertiser || item.deal.contact, item.deal.email || item.deal.contact)}
+        <span>
+          <strong>${escapeHtml(item.deal.advertiser)}</strong>
+          <small>${escapeHtml(item.insight.latestSummary || item.deal.oneLine || "내용 확인 필요")}</small>
+        </span>
+        <time>${escapeHtml(formatDashboardDate(item.lastDate))}</time>
+      </button>
+    `)
+    .join("");
+}
+
+function renderHomeDashboard() {
+  const items = dashboardItems();
+  const events = allCalendarEvents();
+  const needsReply = deals.filter((deal) => deal.status === "reply").length;
+  const urgent = items.filter((item) => item.deal.status === "reply" && item.priority.level === "urgent").length;
+  const upcomingCount = events.filter((event) => event.type === "schedule").length;
+  const latest = items.sort((a, b) => b.lastDate.getTime() - a.lastDate.getTime())[0];
+  return `
+    <div class="home-dashboard">
+      <section class="dashboard-hero">
+        <div>
+          <p class="dashboard-kicker">오늘 먼저 볼 것</p>
+          <h2>${urgent ? `급한 답장 ${urgent}개` : needsReply ? `답장할 메일 ${needsReply}개` : "지금은 큰 급한 일 없음"}</h2>
+          <p>${latest ? `${escapeHtml(latest.deal.advertiser)} 메일이 가장 최근에 들어왔습니다.` : "메일을 불러오면 해야 할 일이 여기에 정리됩니다."}</p>
+        </div>
+        <div class="dashboard-stats">
+          <span><strong>${deals.length}</strong><small>전체 대화</small></span>
+          <span><strong>${needsReply}</strong><small>내 답장 필요</small></span>
+          <span><strong>${upcomingCount}</strong><small>메일 속 일정</small></span>
+        </div>
+      </section>
+
+      <section class="dashboard-panel priority-panel">
+        <div class="dashboard-panel-head">
+          <h3>우선으로 할 일</h3>
+          <span>중요도순</span>
+        </div>
+        <div class="task-list">${renderPriorityTasks(items)}</div>
+      </section>
+
+      <section class="dashboard-panel calendar-panel">
+        <div class="dashboard-panel-head">
+          <h3>일정 캘린더</h3>
+          <span>초록: 일정 · 회색: 메일</span>
+        </div>
+        ${renderCalendar(events)}
+      </section>
+
+      <section class="dashboard-panel upcoming-panel">
+        <div class="dashboard-panel-head">
+          <h3>메일에서 잡힌 일정</h3>
+          <span>${upcomingCount}개</span>
+        </div>
+        <div class="schedule-list">${renderUpcomingEvents(events)}</div>
+      </section>
+
+      <section class="dashboard-panel recent-panel">
+        <div class="dashboard-panel-head">
+          <h3>최근 들어온 메일</h3>
+          <span>최신순</span>
+        </div>
+        <div class="recent-mail-list">${renderRecentMail(items)}</div>
+      </section>
+    </div>
+  `;
+}
+
 function filteredDeals() {
   const query = state.query.trim().toLowerCase();
   const items = deals
@@ -859,17 +1131,30 @@ function renderSummary() {
 }
 
 function renderFilters() {
-  $("#statusFilters").innerHTML = statusLabels
+  $("#statusFilters").innerHTML = [
+    `<button class="${state.view === "dashboard" ? "active" : ""}" data-home="true" type="button"><span>대시보드</span><strong>⌂</strong></button>`,
+    ...statusLabels
     .map(
       ([id, label]) => {
         const count = deals.filter((deal) => dealMatchesFilter(deal, id)).length;
-        return `<button class="${state.filter === id ? "active" : ""}" data-filter="${id}" type="button"><span>${label}</span><strong>${count}</strong></button>`;
+        return `<button class="${state.view !== "dashboard" && state.filter === id ? "active" : ""}" data-filter="${id}" type="button"><span>${label}</span><strong>${count}</strong></button>`;
       },
-    )
-    .join("");
+    ),
+  ].join("");
 }
 
 function renderList() {
+  const title = document.querySelector(".mail-toolbar strong");
+  if (title) title.textContent = state.view === "dashboard" ? "오늘의 대시보드" : "광고주 대화";
+
+  if (state.view === "dashboard") {
+    $("#resultCount").textContent = `${deals.length}건`;
+    $("#dealList").innerHTML = deals.length
+      ? renderHomeDashboard()
+      : `<div class="empty-list">${state.lastError ? `${escapeHtml(state.lastError)}. 새로고침을 다시 눌러보세요.` : "메일을 불러오고 있습니다."}</div>`;
+    return;
+  }
+
   const items = filteredDeals();
   if (!items.some((deal) => deal.id === state.selectedId) && items[0]) {
     state.selectedId = items[0].id;
@@ -1552,6 +1837,10 @@ function renderSummaryItem(item) {
 }
 
 function renderDetail() {
+  if (state.view === "dashboard" && !document.body.classList.contains("desktop-detail-open") && !document.body.classList.contains("mobile-detail-open")) {
+    $("#detail").innerHTML = "";
+    return;
+  }
   const deal = deals.find((item) => item.id === state.selectedId) || filteredDeals()[0];
   if (!deal) {
     $("#detail").innerHTML = `<p class="muted">검색 결과가 없습니다.</p>`;
@@ -1718,6 +2007,8 @@ document.addEventListener("click", (event) => {
 
   const dealButton = event.target.closest("[data-id]");
   if (dealButton) {
+    state.returnView = state.view === "dashboard" ? "dashboard" : "list";
+    state.view = "detail";
     state.selectedId = dealButton.dataset.id;
     state.highlightedMessage = "";
     render();
@@ -1726,8 +2017,19 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  const homeButton = event.target.closest("[data-home]");
+  if (homeButton) {
+    state.view = "dashboard";
+    state.highlightedMessage = "";
+    document.body.classList.remove("mobile-drawer-open");
+    closeDetailView();
+    render();
+    return;
+  }
+
   const filterButton = event.target.closest("[data-filter]");
   if (filterButton) {
+    state.view = "list";
     state.filter = filterButton.dataset.filter;
     state.highlightedMessage = "";
     document.body.classList.remove("mobile-drawer-open");
@@ -1737,7 +2039,9 @@ document.addEventListener("click", (event) => {
   }
 
   if (event.target.closest("[data-mobile-back]")) {
+    state.view = state.returnView || "dashboard";
     closeDetailView();
+    render();
     return;
   }
 
@@ -1828,6 +2132,7 @@ document.addEventListener("click", (event) => {
 
 $("#searchInput").addEventListener("input", (event) => {
   state.query = event.target.value;
+  state.view = state.query.trim() ? "list" : state.view;
   closeDesktopDetail();
   renderList();
   renderDetail();
@@ -1850,6 +2155,8 @@ $("#logoutButton").addEventListener("click", () => {
   closeDetailView();
   deals = [];
   state.selectedId = "";
+  state.view = "dashboard";
+  state.returnView = "dashboard";
   render();
   showLogin();
 });
