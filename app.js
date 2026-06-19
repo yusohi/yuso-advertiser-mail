@@ -949,6 +949,32 @@ function scheduleTopicFromLine(line = "") {
   return `${label} 관련하여 이야기 나눔${snippet ? ` · ${snippet}` : ""}`;
 }
 
+function scheduleCategoryFromTitle(title = "") {
+  if (/업로드|게시/.test(title)) return "upload";
+  if (/촬영/.test(title)) return "shoot";
+  if (/계약|서명/.test(title)) return "contract";
+  if (/가이드/.test(title)) return "guide";
+  if (/기획안|콘티|원고/.test(title)) return "plan";
+  if (/초안|가편|시안/.test(title)) return "draft";
+  if (/최종|컨펌|확정/.test(title)) return "final";
+  if (/마감/.test(title)) return "deadline";
+  if (/답장|회신/.test(title)) return "reply";
+  return "schedule";
+}
+
+function scheduleConfidence({ title = "", context = "", tokenContext = "" } = {}) {
+  const full = `${title} ${context}`;
+  let score = 0;
+  if (/확정|컨펌|진행\s*(?:확정|부탁|하겠|해주|가능)|가능합니다|가능할 것|좋습니다|좋은데요|괜찮|맞춰|픽스/i.test(full)) score += 90;
+  if (/업로드|게시|촬영|계약|서명|마감|최종/i.test(full)) score += 45;
+  if (/전달|공유|보내|수령/i.test(full)) score += 22;
+  if (/제안|희망|가능하실까요|가능할까요|문의|검토|혹\b|혹시/i.test(full)) score -= 32;
+  if (/->|→|←|피드백\s*및\s*픽스|수정\s*요청|초기|예시|이를테면/i.test(full)) score -= 45;
+  if (/확정|컨펌|진행|가능합니다|가능할 것|좋|괜찮|픽스/i.test(tokenContext)) score += 95;
+  if (/혹|혹시|가능한\s*컨디션|가능하실까요|가능할까요|희망|문의/i.test(tokenContext)) score -= 75;
+  return score;
+}
+
 function dealTagColor(deal) {
   const source = normalizedKey(deal?.id || deal?.advertiser || deal?.email || "brand");
   let hash = 0;
@@ -971,7 +997,8 @@ function dealTagStyle(deal) {
 function scheduleEventsForDeal(deal) {
   const messages = dealMessages(deal);
   const events = [];
-  for (const message of messages) {
+  for (let messageIndex = 0; messageIndex < messages.length; messageIndex += 1) {
+    const message = messages[messageIndex];
     const receivedAt = parseDealDate({ lastTouchIso: message.dateIso, lastTouch: message.date });
     if (receivedAt.getTime() > 0) {
       events.push({
@@ -995,22 +1022,54 @@ function scheduleEventsForDeal(deal) {
         .filter(Boolean)
         .join(" · ");
       if (!/(일정|업로드|게시|촬영|기획안|가이드|마감|초안|가편|최종|계약|서명|회신|답장|\d{1,2}\s*월\s*\d{1,2}\s*일|\d{1,2}\/\d{1,2})/i.test(context)) continue;
-      const tokens = line.match(/\d{4}[.\-/]\s*\d{1,2}[.\-/]\s*\d{1,2}|\d{1,2}\s*월\s*\d{1,2}\s*일|\b\d{1,2}\/\d{1,2}\b|오늘|내일/g) || [];
-      for (const token of tokens) {
+      const tokenMatches = [...line.matchAll(/\d{4}[.\-/]\s*\d{1,2}[.\-/]\s*\d{1,2}|\d{1,2}\s*월\s*\d{1,2}\s*일|\b\d{1,2}\/\d{1,2}\b|오늘|내일/g)];
+      for (const match of tokenMatches) {
+        const token = match[0];
         const date = parseScheduleToken(token, baseDate);
         if (!date || Number.isNaN(date.getTime())) continue;
+        const title = scheduleLabelFromLine(context);
+        const category = scheduleCategoryFromTitle(title);
+        const tokenIndex = match.index || 0;
+        const tokenContext = line.slice(Math.max(0, tokenIndex - 22), tokenIndex + token.length + 22);
         events.push({
           type: "schedule",
           date,
           key: formatCalendarKey(date),
           deal,
-          title: scheduleLabelFromLine(context),
+          title,
           text: scheduleTopicFromLine(context),
+          category,
+          confidence: scheduleConfidence({ title, context, tokenContext }),
+          sourceOrder: messageIndex * 1000 + lineIndex,
         });
       }
     }
   }
   return events;
+}
+
+function consolidateScheduleEvents(events = []) {
+  const mailEvents = events.filter((event) => event.type !== "schedule");
+  const candidates = events
+    .filter((event) => event.type === "schedule")
+    .filter((event) => {
+      if (["upload", "shoot", "contract", "deadline", "final"].includes(event.category)) return event.confidence >= 35;
+      if (["plan", "guide", "draft"].includes(event.category)) return event.confidence >= 25;
+      return event.confidence >= 95;
+    });
+  const groups = candidates.reduce((map, event) => {
+    const key = [event.deal.id, event.category].join("|");
+    const list = map.get(key) || [];
+    list.push(event);
+    map.set(key, list);
+    return map;
+  }, new Map());
+  const chosen = [...groups.values()].map((list) => list.sort((a, b) => (
+    b.confidence - a.confidence ||
+    b.sourceOrder - a.sourceOrder ||
+    b.date.getTime() - a.date.getTime()
+  ))[0]);
+  return [...mailEvents, ...chosen];
 }
 
 function matchesBrandFilter(deal) {
@@ -1034,9 +1093,10 @@ function dashboardItems() {
 
 function allCalendarEvents() {
   const seen = new Set();
-  return deals
+  const rawEvents = deals
     .filter(matchesBrandFilter)
-    .flatMap(scheduleEventsForDeal)
+    .flatMap(scheduleEventsForDeal);
+  return consolidateScheduleEvents(rawEvents)
     .filter((event) => {
       const key = [event.type, event.key, event.deal.id, event.title, event.text].join("|");
       if (!event.key || seen.has(key)) return false;
@@ -1235,7 +1295,6 @@ function renderRecentMail(items) {
 }
 
 function renderHomeDashboard() {
-  const allEvents = deals.flatMap(scheduleEventsForDeal);
   const items = dashboardItems();
   const events = allCalendarEvents();
   const scopedDeals = deals.filter(matchesBrandFilter);
