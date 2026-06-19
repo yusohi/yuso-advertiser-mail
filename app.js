@@ -1113,16 +1113,21 @@ function renderPriorityTasks(items) {
     .slice(0, 6);
   if (!tasks.length) return `<p class="dashboard-empty">지금 바로 답장할 메일은 없습니다.</p>`;
   return tasks
-    .map((item, index) => `
-      <button class="task-card ${escapeAttr(item.priority.level)}" data-id="${escapeAttr(item.deal.id)}" type="button">
-        <span class="task-rank">${index + 1}</span>
-        <span class="task-body">
-          <strong>${escapeHtml(item.deal.advertiser)}</strong>
-          <span>${highlightImportantText(item.action)}</span>
-          <small>${escapeHtml(item.priority.label)} · 마지막 메일 ${escapeHtml(item.deal.lastTouch || formatDashboardDate(item.lastDate))}</small>
-        </span>
-      </button>
-    `)
+    .map((item, index) => {
+      const productName = extractProductName(item.deal);
+      const action = conciseActionLabel(item.action);
+      return `
+        <button class="task-card ${escapeAttr(item.priority.level)}" data-id="${escapeAttr(item.deal.id)}" type="button">
+          <span class="task-rank">${index + 1}</span>
+          <span class="task-body">
+            <strong>${escapeHtml(item.deal.advertiser)}</strong>
+            <span class="task-product">${escapeHtml(productName)}</span>
+            <span>${highlightImportantText(action)}</span>
+            <small>${escapeHtml(item.priority.label)} · 마지막 메일 ${escapeHtml(item.deal.lastTouch || formatDashboardDate(item.lastDate))}</small>
+          </span>
+        </button>
+      `;
+    })
     .join("");
 }
 
@@ -1706,6 +1711,55 @@ function latestActionSteps(text = "", need = "") {
   steps.push(need);
   steps.push("답장 전 최신 원문 한 번 더 보기");
   return uniqueItems(steps, 4);
+}
+
+function cleanProductName(value = "") {
+  return String(value || "")
+    .replace(/https?:\/\/\S+/g, "")
+    .replace(/[#*_`"'“”‘’()[\]{}<>]/g, " ")
+    .replace(/\b(?:제품|상품|브랜드|서비스|캠페인|협업|광고|제안|문의|진행|가능|확인|부탁|드립니다|입니다|관련|소개|콘텐츠|유튜브|채널)\b/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 24);
+}
+
+function extractProductName(deal, messages = dealMessages(deal)) {
+  const latest = currentMessageText(latestExternalMessage(deal));
+  const full = normalizeVisibleMailText([
+    deal?.brand,
+    deal?.oneLine,
+    deal?.nextAction,
+    latest,
+  ].join("\n"));
+  const patterns = [
+    /(?:브랜드|제품|상품|서비스|캠페인)\s*(?:명|이름)?\s*[:：]\s*([^\n.,。]{2,32})/i,
+    /['"“”‘’]([^'"“”‘’]{2,28})['"“”‘’]\s*(?:제품|상품|브랜드|서비스|캠페인)/i,
+    /([가-힣A-Za-z0-9][가-힣A-Za-z0-9\s+·&-]{1,28})\s*(?:제품|상품|브랜드|서비스|캠페인|협업|광고|PPL)/i,
+    /(?:폼\s*클렌징|클렌징폼|선크림|크림|세럼|앰플|마스크팩|샴푸|치약|칫솔|영양제|다이어트|림핏|비플레인|라이트앤조이|렌트리|모두닥|갓튜버|알파컷|카투어|원더라이프)/i,
+  ];
+  for (const pattern of patterns) {
+    const match = full.match(pattern);
+    if (match) {
+      const value = cleanProductName(match[1] || match[0]);
+      if (value && value.length >= 2) return value;
+    }
+  }
+  const brand = cleanProductName(deal?.brand);
+  if (brand && !/gmail|메일|광고/i.test(brand)) return brand;
+  return "제품/브랜드";
+}
+
+function conciseActionLabel(action = "") {
+  const text = String(action || "").trim();
+  if (/제품 링크|원하는 제품|고른 제품|선택 결과/.test(text)) return "제품 선택해서 답장해야 함";
+  if (/채널과 맞는지|진행 여부|제안 내용|검토/.test(text)) return "협업 가능한지 확인해야 함";
+  if (/광고비|비용|VAT|제공 조건/.test(text)) return "광고비와 조건 확인해야 함";
+  if (/계약|서명|정산/.test(text)) return "계약/서명 처리해야 함";
+  if (/주소|연락처|배송/.test(text)) return "배송 정보 보내야 함";
+  if (/촬영|업로드|일정|날짜/.test(text)) return "가능 일정 확인해야 함";
+  if (/가이드|필수 문구|자료/.test(text)) return "가이드 조건 확인해야 함";
+  if (/수정|코멘트|반영/.test(text)) return "수정 요청 확인해야 함";
+  return text.replace(/하기$/g, "해야 함").replace(/보기$/g, "확인해야 함") || "메일 확인해야 함";
 }
 
 function progressFromLatest(text = "", sender = "상대", lastFromMe = false, need = "") {

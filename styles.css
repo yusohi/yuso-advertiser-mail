@@ -758,6 +758,27 @@ body.desktop-detail-open .dashboard {
   white-space: nowrap;
 }
 
+.task-body .task-product {
+  justify-self: start;
+  max-width: 100%;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: #dff8ea;
+  color: #06713e;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.task-card.urgent .task-product {
+  background: #ffe5e9;
+  color: #b42334;
+}
+
+.task-card.soon .task-product {
+  background: #fff1cc;
+  color: #9a6700;
+}
+
 .mini-calendar {
   display: grid;
   gap: 12px;
