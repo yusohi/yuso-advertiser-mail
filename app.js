@@ -1142,42 +1142,42 @@ function latestActionSteps(text = "", need = "") {
   const intent = latestIntent(text);
   const steps = [];
   if (intent.initialProposal) {
-    steps.push("브랜드와 제안 제품이 유소 채널에 맞는지 확인하기");
-    steps.push("진행할지, 유료 광고 조건이 필요한지 답장하기");
-    if (intent.schedule) steps.push("원하는 촬영/업로드 일정이 있는지 확인하기");
+    steps.push("제품/브랜드가 유소 채널과 맞는지 보기");
+    steps.push("진행 가능하면 광고비와 일정 조건 답장하기");
+    if (intent.schedule) steps.push("희망 촬영/업로드 날짜 확인하기");
     return uniqueItems(steps, 4);
   }
   if (intent.revision) {
-    steps.push("기획안/가이드에 남긴 수정 코멘트를 열어서 반영할 부분 확인하기");
-    steps.push("수정 반영 후 가능한 일정과 진행 여부를 답장하기");
+    steps.push("기획안 코멘트 열어서 수정할 부분 보기");
+    steps.push("수정 반영 후 진행 가능 여부 답장하기");
   }
   if (intent.productSelect) {
-    steps.push("메일에 온 제품/상품 링크를 열어 추가된 항목 확인하기");
-    steps.push("선택할 제품을 정리해서 상대에게 회신하기");
+    steps.push("제품 링크 열고 원하는 제품 고르기");
+    steps.push("고른 제품을 답장하기");
   }
-  if (intent.contract) steps.push("계약/서명/정산 자료 요청 내용을 확인해서 처리하기");
-  if (intent.shipping) steps.push("보내도 되는 배송지/연락처 정보만 정리해서 전달하기");
-  if (intent.money) steps.push("광고비와 제공 조건이 맞는지 확인하고 조정할 조건 표시하기");
-  if (intent.guide) steps.push("가이드라인/필수 조건을 확인하고 기획안 또는 촬영 준비에 반영하기");
-  if (intent.schedule) steps.push("촬영/업로드 가능 일정을 캘린더와 비교해서 답장하기");
+  if (intent.contract) steps.push("계약서/서명 요청 확인하기");
+  if (intent.shipping) steps.push("주소/연락처 보내기");
+  if (intent.money) steps.push("광고비/VAT/제품 제공 조건 확인하기");
+  if (intent.guide) steps.push("가이드 필수 문구 체크하기");
+  if (intent.schedule) steps.push("촬영/업로드 가능한 날짜 확인하기");
   steps.push(need);
-  steps.push("답장 전 최신 원문에서 빠진 조건이 없는지 한 번 더 확인하기");
+  steps.push("답장 전 최신 원문 한 번 더 보기");
   return uniqueItems(steps, 4);
 }
 
 function progressFromLatest(text = "", sender = "상대", lastFromMe = false, need = "") {
   const intent = latestIntent(text);
-  if (lastFromMe) return `내 답장 완료 · ${sender} 회신 대기`;
-  if (intent.initialProposal) return "신규 제안 · 브랜드가 광고/협업 가능 여부를 문의한 단계";
-  if (intent.revision) return "답장 필요 · 상대가 기획안/가이드 수정 코멘트를 전달했고, 반영 여부와 진행 가능 일정을 회신해야 함";
+  if (lastFromMe) return `내 답장 완료 · ${sender} 답장 기다리는 중`;
+  if (intent.initialProposal) return "새 광고 제안 · 진행할지 확인하면 됨";
+  if (intent.revision) return "답장 필요 · 수정 요청 확인 후 가능 여부 답장";
   if (intent.productSelect) {
-    return "답장 필요 · 상대가 제품/상품 링크 확인을 요청했고, 셀렉 결과를 회신해야 함";
+    return "답장 필요 · 제품 고르고 답장";
   }
-  if (intent.contract) return "답장 필요 · 계약/서명/정산 자료를 확인하고 처리해야 함";
-  if (intent.shipping) return "답장 필요 · 제품 발송을 위한 배송 정보 요청 단계";
-  if (intent.money) return "답장 필요 · 비용/제공 조건을 검토하고 협의해야 함";
-  if (intent.guide) return "답장 필요 · 가이드라인과 진행 조건을 확인해 반영해야 함";
-  if (intent.schedule || intent.approval) return "답장 필요 · 일정과 진행 여부를 확인해 회신해야 함";
+  if (intent.contract) return "답장 필요 · 계약서/서명 확인";
+  if (intent.shipping) return "답장 필요 · 배송 정보 보내기";
+  if (intent.money) return "답장 필요 · 광고비/제공 조건 확인";
+  if (intent.guide) return "확인 필요 · 가이드 필수 조건 체크";
+  if (intent.schedule || intent.approval) return "답장 필요 · 일정과 진행 여부 답장";
   return `답장 필요 · ${need}`;
 }
 
@@ -1189,28 +1189,28 @@ function conversationSummaryFromLatest(messages, latestExternal, latestMine, lat
   const items = [];
 
   if (intent.revision) {
-    items.push("최근: 상대가 기획안/가이드/원고 수정 의견을 전달했고, 반영 여부를 알려달라고 함");
-    if (/그대로\s*촬영\s*진행|촬영\s*진행/.test(cleanLatest)) items.push("진행: 큰 수정은 거의 없어서 코멘트 반영 후 그대로 촬영 진행하면 되는 상태");
+    items.push("최근: 상대가 수정 코멘트를 보냈고, 반영 가능 여부를 기다림");
+    if (/그대로\s*촬영\s*진행|촬영\s*진행/.test(cleanLatest)) items.push("진행: 큰 문제 없으면 그대로 촬영 진행 가능");
   } else if (intent.initialProposal) {
     items.push(...proposalSummaryItems(cleanLatest, latestExternal));
   } else if (intent.productSelect) {
-    items.push("최근: 상대가 제품/상품 링크 확인 또는 셀렉 결과 회신을 요청함");
+    items.push("최근: 제품 링크 확인 후 선택 결과를 달라고 함");
   } else if (intent.contract) {
-    items.push("최근: 계약/서명/정산 자료 처리가 필요한 단계로 넘어옴");
+    items.push("최근: 계약서/서명 또는 정산 자료 확인 단계");
   } else if (intent.shipping) {
-    items.push("최근: 제품 발송을 위한 배송 정보 확인이 필요한 상태");
+    items.push("최근: 제품 발송용 배송 정보를 요청함");
   } else if (intent.money) {
-    items.push("최근: 비용과 제공 조건을 확인하거나 조율해야 하는 상태");
+    items.push("최근: 광고비와 제공 조건을 확인해야 함");
   } else if (intent.guide) {
-    items.push("최근: 상대가 가이드라인/필수 조건/자료를 확인해달라고 전달함");
+    items.push("최근: 가이드/필수 조건을 확인해달라고 함");
   } else if (intent.schedule || intent.approval) {
-    items.push("최근: 일정 또는 진행 가능 여부를 확인해 회신해야 하는 상태");
+    items.push("최근: 일정 또는 진행 가능 여부 답장을 기다림");
   } else if (cleanLatest) {
     items.push(`최근: ${compactSummary(cleanLatest, 96)}`);
   }
 
   if (/가이드라인|가이드|제품\s*정보|제품정보|촬영용\s*제품|제품.*받/.test(mineText)) {
-    items.push("이전: 유소가 가이드라인과 제품 정보를 확인했고 촬영용 제품 수령도 알림");
+    items.push("내 답장: 가이드/제품 정보를 확인했다고 보냄");
   } else if (mineText) {
     items.push(`내 답장: ${compactSummary(mineText, 86)}`);
   }
@@ -1218,7 +1218,7 @@ function conversationSummaryFromLatest(messages, latestExternal, latestMine, lat
   if (intent.initialProposal) {
     // The proposal summary above already captures the concrete request.
   } else if (/선물|제품.*보내|협업|광고|브랜드|캠페인|PPL/i.test(firstText)) {
-    items.push("시작: 브랜드가 제품 협업/광고 제안으로 연락을 시작함");
+    items.push("시작: 브랜드가 광고/협업 제안으로 연락함");
   } else if (firstText && firstText !== cleanLatest) {
     items.push(`시작: ${compactSummary(firstText, 86)}`);
   }
@@ -1230,12 +1230,12 @@ function conversationSummaryAfterMyReply(messages, latestText = "") {
   const firstText = currentMessageText(messages[0] || {});
   const items = [];
   if (latestText) items.push(`최근 내 답장: ${compactSummary(latestText, 96)}`);
-  items.push("현재: 내가 답장을 보냈고 상대 회신을 기다리는 상태");
+  items.push("현재: 내 답장은 보냈고 상대 답장 기다리는 중");
   if (/질문|궁금|확인|가능|사용법|권장|문의/.test(latestText)) {
-    items.push("확인 필요: 상대가 다음 답장에서 질문/조건에 답하면 그 내용 기준으로 업데이트");
+    items.push("다음: 상대가 답하면 조건이 바뀌었는지 확인");
   }
   if (/선물|제품.*보내|협업|광고|브랜드|캠페인|PPL/i.test(firstText)) {
-    items.push("시작: 브랜드가 제품 협업/광고 제안으로 연락을 시작함");
+    items.push("시작: 브랜드가 광고/협업 제안으로 연락함");
   } else if (firstText && firstText !== latestText) {
     items.push(`시작: ${compactSummary(firstText, 86)}`);
   }
@@ -1501,7 +1501,54 @@ function renderConditionItem(item) {
   const text = conditionText(item);
   const index = typeof item === "object" ? Number(item.messageIndex) : -1;
   const attrs = Number.isInteger(index) && index >= 0 ? ` data-condition-message="${index}" title="원문 위치 보기"` : "";
-  return `<button class="condition-chip" type="button"${attrs}>${escapeHtml(text)}</button>`;
+  return `<button class="condition-chip" type="button"${attrs}>${highlightImportantText(text)}</button>`;
+}
+
+function markClassForToken(token = "") {
+  const value = String(token || "");
+  if (/답장|회신|빨리|오늘|확인\s*필요/.test(value)) return "mark-hot";
+  if (/내 답장 완료|기다리는|대기/.test(value)) return "mark-wait";
+  if (/광고비|비용|VAT|vat|\d+\s*만/.test(value)) return "mark-money";
+  if (/일정|업로드|촬영|\d{1,2}\/\d{1,2}|\d{1,2}\s*월\s*\d{1,2}\s*일/.test(value)) return "mark-date";
+  if (/계약|서명|정산/.test(value)) return "mark-contract";
+  if (/기획안|가이드|수정|피드백|코멘트|필수/.test(value)) return "mark-plan";
+  return "mark-soft";
+}
+
+function highlightImportantText(value = "") {
+  const tokenPattern = /(답장\s*필요|확인\s*필요|내 답장 완료|상대 답장 기다리는 중|답장 기다리는 중|회신|답장|빨리|오늘|광고비|비용|VAT|vat|\d+\s*만\s*원?|\d{1,2}\/\d{1,2}|\d{1,2}\s*월\s*\d{1,2}\s*일|일정|업로드|촬영|계약서?|서명|정산|기획안|가이드|수정|피드백|코멘트|필수\s*조건|필수\s*문구)/g;
+  return escapeHtml(value).replace(tokenPattern, (token) => {
+    return `<mark class="text-mark ${markClassForToken(token)}">${token}</mark>`;
+  });
+}
+
+function renderLeadText(value = "") {
+  const [status, ...restParts] = String(value || "").split(" · ");
+  const rest = restParts.join(" · ");
+  return `
+    <div class="lead-text">
+      <span class="lead-main"><span class="status-star" aria-hidden="true">★</span>${highlightImportantText(status)}</span>
+      ${rest ? `<span class="lead-sub">${highlightImportantText(rest)}</span>` : ""}
+    </div>
+  `;
+}
+
+function renderActionItem(item, index) {
+  return `
+    <li>
+      <span class="action-num">${index + 1}</span>
+      <span>${highlightImportantText(item)}</span>
+    </li>
+  `;
+}
+
+function renderSummaryItem(item) {
+  return `
+    <li>
+      <span class="summary-dot" aria-hidden="true">✦</span>
+      <span>${highlightImportantText(item)}</span>
+    </li>
+  `;
 }
 
 function renderDetail() {
@@ -1536,15 +1583,15 @@ function renderDetail() {
       <div class="grid">
       <section class="section insight-card">
         <h3>현재 어디까지 왔는지</h3>
-        <p class="lead-text">${escapeHtml(insight.progress)}</p>
+        ${renderLeadText(insight.progress)}
       </section>
       <section class="section action-card">
         <h3>다음 액션</h3>
-        <ol class="action-list">${insight.nextSteps.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ol>
+        <ol class="action-list">${insight.nextSteps.map(renderActionItem).join("")}</ol>
       </section>
       <section class="section">
         <h3>짧은 대화 요약</h3>
-        <ul class="summary-list">${insight.conversation.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
+        <ul class="summary-list">${insight.conversation.map(renderSummaryItem).join("")}</ul>
       </section>
       <section class="section">
         <h3>핵심 조건</h3>
