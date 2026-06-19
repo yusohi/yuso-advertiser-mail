@@ -600,6 +600,10 @@ body.desktop-detail-open .dashboard {
   grid-column: 2;
 }
 
+.tag-panel {
+  grid-column: 1 / -1;
+}
+
 .dashboard-panel-head {
   display: flex;
   align-items: center;
@@ -625,6 +629,49 @@ body.desktop-detail-open .dashboard {
 .recent-mail-list {
   display: grid;
   gap: 10px;
+}
+
+.brand-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.brand-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 0 11px;
+  border: 1px solid var(--tag-border, #e2e9ee);
+  border-radius: 10px;
+  background: var(--tag-bg, #fbfdfc);
+  color: var(--tag-color, #4f5b67);
+  font-size: 13px;
+  font-weight: 850;
+  cursor: pointer;
+  transition:
+    box-shadow 150ms ease,
+    transform 150ms ease,
+    border-color 150ms ease;
+}
+
+.brand-tag strong {
+  display: inline-grid;
+  min-width: 20px;
+  height: 20px;
+  place-items: center;
+  border-radius: 7px;
+  background: #fff;
+  color: inherit;
+  font-size: 11px;
+}
+
+.brand-tag:hover,
+.brand-tag.active {
+  border-color: var(--tag-color, #16c46d);
+  box-shadow: 0 10px 22px rgba(31, 41, 51, 0.06);
+  transform: translateY(-1px);
 }
 
 .task-card,
@@ -784,11 +831,12 @@ body.desktop-detail-open .dashboard {
 }
 
 .calendar-day em.has-schedule {
-  background: #16c46d;
+  background: var(--tag-color, #16c46d);
 }
 
 .calendar-day em.has-mail {
-  background: #a6b0bb;
+  background: var(--tag-color, #a6b0bb);
+  opacity: 0.7;
 }
 
 .schedule-item {
@@ -796,6 +844,10 @@ body.desktop-detail-open .dashboard {
   gap: 12px;
   align-items: center;
   padding: 13px 14px;
+  border-left: 5px solid var(--tag-color, #16c46d);
+  background:
+    linear-gradient(90deg, var(--tag-bg, #fbfdfc), #fff 46%),
+    #fff;
 }
 
 .schedule-item time {
@@ -803,10 +855,20 @@ body.desktop-detail-open .dashboard {
   min-height: 34px;
   place-items: center;
   border-radius: 9px;
-  background: #e8f8ef;
-  color: #10824a;
+  background: var(--tag-bg, #e8f8ef);
+  color: var(--tag-color, #10824a);
   font-size: 13px;
   font-weight: 900;
+}
+
+.brand-dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  margin-right: 7px;
+  border-radius: 50%;
+  background: var(--tag-color, #16c46d);
+  vertical-align: 1px;
 }
 
 .recent-mail-item {

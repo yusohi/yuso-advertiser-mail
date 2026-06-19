@@ -21,6 +21,7 @@ const state = {
   view: "dashboard",
   returnView: "dashboard",
   filter: "all",
+  brandFilter: "",
   query: "",
   updatedAt: "불러오는 중",
   loading: false,
@@ -868,16 +869,47 @@ function parseScheduleToken(token = "", baseDate = new Date()) {
 
 function scheduleLabelFromLine(line = "") {
   const text = normalizeVisibleMailText(line).replace(/\s+/g, " ").trim();
-  if (/업로드|게시/.test(text)) return "업로드";
-  if (/촬영/.test(text)) return "촬영";
-  if (/가편|초안|시안/.test(text)) return "초안/가편";
-  if (/최종|컨펌|확정/.test(text)) return "최종 확인";
-  if (/기획안|콘티|원고/.test(text)) return "기획안";
-  if (/가이드/.test(text)) return "가이드";
-  if (/계약|서명/.test(text)) return "계약서";
-  if (/마감|deadline/i.test(text)) return "마감";
-  if (/회신|답장/.test(text)) return "답장";
-  return "일정";
+  if (/업로드|게시/.test(text)) return "업로드일";
+  if (/촬영/.test(text)) return "촬영일";
+  if (/가편|초안|시안/.test(text)) return "초안/가편 전달일";
+  if (/최종|컨펌|확정/.test(text)) return "최종 확인일";
+  if (/기획안|콘티|원고/.test(text)) {
+    if (/수정|피드백|코멘트/.test(text)) return "기획안 수정 확인";
+    if (/전달|공유|보내/.test(text)) return "기획안 전달일";
+    return "기획안 관련 일정";
+  }
+  if (/가이드/.test(text)) return /전달|공유|보내/.test(text) ? "가이드 전달일" : "가이드 확인일";
+  if (/계약|서명/.test(text)) return "계약서 확인일";
+  if (/마감|deadline/i.test(text)) return "마감일";
+  if (/회신|답장/.test(text)) return "답장 확인일";
+  return "일정 확인";
+}
+
+function scheduleTopicFromLine(line = "") {
+  const rawLabel = scheduleLabelFromLine(line);
+  let label = rawLabel.replace(/일$/g, "").replace(/ 확인$/g, "");
+  if (rawLabel === "일정 확인") label = "가능 날짜/일정 조건";
+  const snippet = messageSnippet(line, 82);
+  return `${label} 관련하여 이야기 나눔${snippet ? ` · ${snippet}` : ""}`;
+}
+
+function dealTagColor(deal) {
+  const source = normalizedKey(deal?.id || deal?.advertiser || deal?.email || "brand");
+  let hash = 0;
+  for (let index = 0; index < source.length; index += 1) {
+    hash = (hash * 31 + source.charCodeAt(index)) % 360;
+  }
+  const hue = (hash + 70) % 360;
+  return {
+    color: `hsl(${hue} 62% 42%)`,
+    bg: `hsl(${hue} 76% 96%)`,
+    border: `hsl(${hue} 54% 84%)`,
+  };
+}
+
+function dealTagStyle(deal) {
+  const color = dealTagColor(deal);
+  return `--tag-color:${color.color};--tag-bg:${color.bg};--tag-border:${color.border};`;
 }
 
 function scheduleEventsForDeal(deal) {
@@ -901,8 +933,12 @@ function scheduleEventsForDeal(deal) {
       .split("\n")
       .map((line) => line.trim())
       .filter(Boolean);
-    for (const line of lines) {
-      if (!/(일정|업로드|게시|촬영|기획안|가이드|마감|초안|가편|최종|계약|서명|회신|답장|\d{1,2}\s*월\s*\d{1,2}\s*일|\d{1,2}\/\d{1,2})/i.test(line)) continue;
+    for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+      const line = lines[lineIndex];
+      const context = [lines[lineIndex - 1], line, lines[lineIndex + 1]]
+        .filter(Boolean)
+        .join(" · ");
+      if (!/(일정|업로드|게시|촬영|기획안|가이드|마감|초안|가편|최종|계약|서명|회신|답장|\d{1,2}\s*월\s*\d{1,2}\s*일|\d{1,2}\/\d{1,2})/i.test(context)) continue;
       const tokens = line.match(/\d{4}[.\-/]\s*\d{1,2}[.\-/]\s*\d{1,2}|\d{1,2}\s*월\s*\d{1,2}\s*일|\b\d{1,2}\/\d{1,2}\b|오늘|내일/g) || [];
       for (const token of tokens) {
         const date = parseScheduleToken(token, baseDate);
@@ -912,8 +948,8 @@ function scheduleEventsForDeal(deal) {
           date,
           key: formatCalendarKey(date),
           deal,
-          title: scheduleLabelFromLine(line),
-          text: messageSnippet(line, 70),
+          title: scheduleLabelFromLine(context),
+          text: scheduleTopicFromLine(context),
         });
       }
     }
@@ -921,8 +957,12 @@ function scheduleEventsForDeal(deal) {
   return events;
 }
 
+function matchesBrandFilter(deal) {
+  return !state.brandFilter || String(deal?.id || "") === state.brandFilter;
+}
+
 function dashboardItems() {
-  return deals.map((deal) => {
+  return deals.filter(matchesBrandFilter).map((deal) => {
     const messages = dealMessages(deal);
     const insight = buildDealInsight(deal, messages);
     const priority = dealPriority(deal);
@@ -939,6 +979,7 @@ function dashboardItems() {
 function allCalendarEvents() {
   const seen = new Set();
   return deals
+    .filter(matchesBrandFilter)
     .flatMap(scheduleEventsForDeal)
     .filter((event) => {
       const key = [event.type, event.key, event.deal.id, event.title, event.text].join("|");
@@ -1002,8 +1043,9 @@ function renderCalendar(events) {
           const isToday = key === formatCalendarKey(today);
           const hasSchedule = dayEvents.some((event) => event.type === "schedule");
           const hasMail = dayEvents.some((event) => event.type === "mail");
+          const firstDeal = dayEvents[0]?.deal || null;
           return `
-            <button class="calendar-day ${inMonth ? "" : "muted-day"} ${isToday ? "today" : ""}" data-calendar-day="${key}" type="button">
+            <button class="calendar-day ${inMonth ? "" : "muted-day"} ${isToday ? "today" : ""}" data-calendar-day="${key}" style="${firstDeal ? dealTagStyle(firstDeal) : ""}" type="button">
               <span>${date.getDate()}</span>
               <em class="${hasSchedule ? "has-schedule" : hasMail ? "has-mail" : ""}">${dayEvents.length ? dayEvents.length : ""}</em>
             </button>
@@ -1022,14 +1064,39 @@ function renderUpcomingEvents(events) {
     .slice(0, 7);
   if (!upcoming.length) return `<p class="dashboard-empty">메일에서 잡힌 예정 일정이 아직 없습니다.</p>`;
   return upcoming.map((event) => `
-    <button class="schedule-item" data-id="${escapeAttr(event.deal.id)}" type="button">
+    <button class="schedule-item" data-id="${escapeAttr(event.deal.id)}" style="${dealTagStyle(event.deal)}" type="button">
       <time>${escapeHtml(formatDashboardDate(event.date))}</time>
       <span>
-        <strong>${escapeHtml(event.title)} · ${escapeHtml(event.deal.advertiser)}</strong>
+        <strong><b class="brand-dot"></b>${escapeHtml(event.deal.advertiser)} ${escapeHtml(event.title)}</strong>
         <small>${highlightImportantText(event.text)}</small>
       </span>
     </button>
   `).join("");
+}
+
+function renderBrandTags(events) {
+  const counts = events.reduce((map, event) => {
+    const id = String(event.deal?.id || "");
+    if (!id) return map;
+    const current = map.get(id) || { deal: event.deal, count: 0 };
+    current.count += 1;
+    map.set(id, current);
+    return map;
+  }, new Map());
+  const tags = [...counts.values()]
+    .sort((a, b) => b.count - a.count || String(a.deal.advertiser).localeCompare(String(b.deal.advertiser), "ko"))
+    .slice(0, 12);
+  if (!tags.length) return "";
+  return `
+    <div class="brand-tags">
+      <button class="brand-tag ${state.brandFilter ? "" : "active"}" data-brand-filter="" type="button">전체 <strong>${events.length}</strong></button>
+      ${tags.map(({ deal, count }) => `
+        <button class="brand-tag ${state.brandFilter === String(deal.id) ? "active" : ""}" data-brand-filter="${escapeAttr(deal.id)}" style="${dealTagStyle(deal)}" type="button">
+          <span>${escapeHtml(deal.advertiser)}</span><strong>${count}</strong>
+        </button>
+      `).join("")}
+    </div>
+  `;
 }
 
 function renderRecentMail(items) {
@@ -1050,9 +1117,11 @@ function renderRecentMail(items) {
 }
 
 function renderHomeDashboard() {
+  const allEvents = deals.flatMap(scheduleEventsForDeal);
   const items = dashboardItems();
   const events = allCalendarEvents();
-  const needsReply = deals.filter((deal) => deal.status === "reply").length;
+  const scopedDeals = deals.filter(matchesBrandFilter);
+  const needsReply = scopedDeals.filter((deal) => deal.status === "reply").length;
   const urgent = items.filter((item) => item.deal.status === "reply" && item.priority.level === "urgent").length;
   const upcomingCount = events.filter((event) => event.type === "schedule").length;
   const latest = items.sort((a, b) => b.lastDate.getTime() - a.lastDate.getTime())[0];
@@ -1062,13 +1131,21 @@ function renderHomeDashboard() {
         <div>
           <p class="dashboard-kicker">오늘 먼저 볼 것</p>
           <h2>${urgent ? `급한 답장 ${urgent}개` : needsReply ? `답장할 메일 ${needsReply}개` : "지금은 큰 급한 일 없음"}</h2>
-          <p>${latest ? `${escapeHtml(latest.deal.advertiser)} 메일이 가장 최근에 들어왔습니다.` : "메일을 불러오면 해야 할 일이 여기에 정리됩니다."}</p>
+          <p>${state.brandFilter ? `${escapeHtml(items[0]?.deal.advertiser || "선택한 브랜드")} 메일만 보고 있습니다.` : latest ? `${escapeHtml(latest.deal.advertiser)} 메일이 가장 최근에 들어왔습니다.` : "메일을 불러오면 해야 할 일이 여기에 정리됩니다."}</p>
         </div>
         <div class="dashboard-stats">
           <span><strong>${deals.length}</strong><small>전체 대화</small></span>
           <span><strong>${needsReply}</strong><small>내 답장 필요</small></span>
           <span><strong>${upcomingCount}</strong><small>메일 속 일정</small></span>
         </div>
+      </section>
+
+      <section class="dashboard-panel tag-panel">
+        <div class="dashboard-panel-head">
+          <h3>브랜드별 일정 태그</h3>
+          <span>누르면 해당 메일만 보기</span>
+        </div>
+        ${renderBrandTags(allEvents)}
       </section>
 
       <section class="dashboard-panel priority-panel">
@@ -1112,9 +1189,10 @@ function filteredDeals() {
     .filter((deal) => {
       const priority = dealPriority(deal);
       const matchesFilter = dealMatchesFilter(deal, state.filter);
+      const matchesBrand = matchesBrandFilter(deal);
       const haystack =
         `${deal.advertiser} ${deal.contact} ${deal.brand} ${deal.statusLabel} ${deal.oneLine} ${priority.label}`.toLowerCase();
-      return matchesFilter && (!query || haystack.includes(query));
+      return matchesBrand && matchesFilter && (!query || haystack.includes(query));
     });
   return sortForCurrentFilter(items);
 }
@@ -1970,6 +2048,17 @@ document.addEventListener("click", (event) => {
     closeAccountPanel();
   }
 
+  const brandFilterButton = event.target.closest("[data-brand-filter]");
+  if (brandFilterButton) {
+    state.brandFilter = brandFilterButton.dataset.brandFilter || "";
+    state.view = "dashboard";
+    state.highlightedMessage = "";
+    document.body.classList.remove("mobile-drawer-open");
+    closeDetailView();
+    render();
+    return;
+  }
+
   if (document.body.classList.contains("mobile-drawer-open") && isMobileLayout()) {
     const inDrawer = event.target.closest(".sidebar");
     const onMenu = event.target.closest("#layoutToggle");
@@ -2020,6 +2109,7 @@ document.addEventListener("click", (event) => {
   const homeButton = event.target.closest("[data-home]");
   if (homeButton) {
     state.view = "dashboard";
+    state.brandFilter = "";
     state.highlightedMessage = "";
     document.body.classList.remove("mobile-drawer-open");
     closeDetailView();
