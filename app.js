@@ -1,5 +1,10 @@
 let deals = [];
 
+const APP_HOME_URL = "https://yusohi.github.io/yuso-advertiser-mail/";
+if (window.location.protocol === "file:") {
+  window.location.replace(APP_HOME_URL);
+}
+
 const API_URL = "https://bsmfvlodkqyfawsppjno.supabase.co/functions/v1/yuso-mail/api/data";
 const CHANGE_PASSWORD_URL = "https://bsmfvlodkqyfawsppjno.supabase.co/functions/v1/yuso-mail/api/change-password";
 const DELETE_DEAL_URL = "https://bsmfvlodkqyfawsppjno.supabase.co/functions/v1/yuso-mail/api/delete-deal";
