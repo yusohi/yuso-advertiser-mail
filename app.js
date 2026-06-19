@@ -34,6 +34,8 @@ const state = {
   highlightedMessage: "",
   gmailConfigured: false,
   gmailConnected: false,
+  calendarMonthOffset: 0,
+  selectedCalendarKey: "",
 };
 
 const statusLabels = [
@@ -1066,8 +1068,9 @@ function renderPriorityTasks(items) {
 
 function renderCalendar(events) {
   const today = new Date();
-  const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
-  const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+  const viewMonth = new Date(today.getFullYear(), today.getMonth() + state.calendarMonthOffset, 1);
+  const monthStart = new Date(viewMonth.getFullYear(), viewMonth.getMonth(), 1);
+  const monthEnd = new Date(viewMonth.getFullYear(), viewMonth.getMonth() + 1, 0);
   const start = new Date(monthStart);
   start.setDate(1 - monthStart.getDay());
   const cells = Array.from({ length: 42 }, (_, index) => {
@@ -1085,9 +1088,14 @@ function renderCalendar(events) {
   return `
     <div class="mini-calendar">
       <div class="calendar-head">
-        <strong>${today.getFullYear()}.${today.getMonth() + 1}</strong>
-        <span>메일 도착 + 일정</span>
+        <div class="calendar-nav">
+          <button data-calendar-nav="-1" type="button" aria-label="이전 달">‹</button>
+          <strong>${viewMonth.getFullYear()}.${viewMonth.getMonth() + 1}</strong>
+          <button data-calendar-nav="1" type="button" aria-label="다음 달">›</button>
+        </div>
+        <button class="calendar-today" data-calendar-nav="today" type="button">이번 달</button>
       </div>
+      <p class="calendar-help">날짜를 누르면 그날 잡힌 메일과 일정을 볼 수 있습니다.</p>
       <div class="calendar-weekdays">${weekdays.map((day) => `<span>${day}</span>`).join("")}</div>
       <div class="calendar-grid">
         ${cells.map((date) => {
@@ -1099,7 +1107,7 @@ function renderCalendar(events) {
           const hasMail = dayEvents.some((event) => event.type === "mail");
           const firstDeal = dayEvents[0]?.deal || null;
           return `
-            <button class="calendar-day ${inMonth ? "" : "muted-day"} ${isToday ? "today" : ""}" data-calendar-day="${key}" style="${firstDeal ? dealTagStyle(firstDeal) : ""}" type="button">
+            <button class="calendar-day ${inMonth ? "" : "muted-day"} ${isToday ? "today" : ""} ${dayEvents.length ? "has-events" : ""}" data-calendar-day="${key}" style="${firstDeal ? dealTagStyle(firstDeal) : ""}" type="button">
               <span>${date.getDate()}</span>
               <em class="${hasSchedule ? "has-schedule" : hasMail ? "has-mail" : ""}">${dayEvents.length ? dayEvents.length : ""}</em>
             </button>
@@ -1108,6 +1116,62 @@ function renderCalendar(events) {
       </div>
     </div>
   `;
+}
+
+function dateFromCalendarKey(key = "") {
+  const match = String(key).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return null;
+  return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+}
+
+function renderCalendarEventCard(event) {
+  const isSchedule = event.type === "schedule";
+  const label = isSchedule ? "일정" : "메일 도착";
+  const title = isSchedule ? `${event.deal.advertiser} ${event.title}` : `${event.deal.advertiser} 메일 도착`;
+  const text = isSchedule ? event.text : (event.text || event.deal.oneLine || "메일 내용 확인");
+  return `
+    <button class="calendar-event-card ${isSchedule ? "schedule" : "mail"}" data-calendar-detail-id="${escapeAttr(event.deal.id)}" style="${dealTagStyle(event.deal)}" type="button">
+      <span class="calendar-event-type">${label}</span>
+      <span>
+        <strong>${escapeHtml(title)}</strong>
+        <small>${highlightImportantText(text)}</small>
+      </span>
+    </button>
+  `;
+}
+
+function renderCalendarModal() {
+  const modal = $("#calendarModal");
+  if (!modal) return;
+  if (!state.selectedCalendarKey) {
+    modal.classList.add("hidden");
+    modal.setAttribute("aria-hidden", "true");
+    return;
+  }
+  const date = dateFromCalendarKey(state.selectedCalendarKey);
+  const events = allCalendarEvents()
+    .filter((event) => event.key === state.selectedCalendarKey)
+    .sort((a, b) => {
+      if (a.type !== b.type) return a.type === "schedule" ? -1 : 1;
+      return String(a.deal.advertiser).localeCompare(String(b.deal.advertiser), "ko");
+    });
+  modal.innerHTML = `
+    <div class="calendar-modal-card" role="dialog" aria-modal="true" aria-label="날짜 상세">
+      <div class="calendar-modal-head">
+        <div>
+          <p class="eyebrow">Calendar</p>
+          <h2>${date ? escapeHtml(formatDashboardDate(date)) : "선택한 날짜"}</h2>
+          <span>${events.length ? `${events.length}개의 메일/일정` : "잡힌 내용 없음"}</span>
+        </div>
+        <button class="icon-button" data-calendar-close="true" type="button" aria-label="닫기">×</button>
+      </div>
+      <div class="calendar-modal-list">
+        ${events.length ? events.map(renderCalendarEventCard).join("") : `<p class="dashboard-empty">이 날짜에 표시할 메일이나 일정이 없습니다.</p>`}
+      </div>
+    </div>
+  `;
+  modal.classList.remove("hidden");
+  modal.setAttribute("aria-hidden", "false");
 }
 
 function renderUpcomingEvents(events) {
@@ -2098,6 +2162,7 @@ function render() {
   renderFilters();
   renderList();
   renderDetail();
+  renderCalendarModal();
 }
 
 document.addEventListener("click", (event) => {
@@ -2113,6 +2178,43 @@ document.addEventListener("click", (event) => {
     document.body.classList.remove("mobile-drawer-open");
     closeDetailView();
     render();
+    return;
+  }
+
+  const calendarNavButton = event.target.closest("[data-calendar-nav]");
+  if (calendarNavButton) {
+    const value = calendarNavButton.dataset.calendarNav;
+    state.calendarMonthOffset = value === "today" ? 0 : state.calendarMonthOffset + Number(value || 0);
+    state.selectedCalendarKey = "";
+    state.view = "dashboard";
+    render();
+    return;
+  }
+
+  const calendarDayButton = event.target.closest("[data-calendar-day]");
+  if (calendarDayButton) {
+    state.selectedCalendarKey = calendarDayButton.dataset.calendarDay || "";
+    renderCalendarModal();
+    return;
+  }
+
+  const calendarCloseButton = event.target.closest("[data-calendar-close]");
+  if (calendarCloseButton || event.target === $("#calendarModal")) {
+    state.selectedCalendarKey = "";
+    renderCalendarModal();
+    return;
+  }
+
+  const calendarDetailButton = event.target.closest("[data-calendar-detail-id]");
+  if (calendarDetailButton) {
+    state.selectedId = calendarDetailButton.dataset.calendarDetailId;
+    state.returnView = "dashboard";
+    state.view = "detail";
+    state.highlightedMessage = "";
+    state.selectedCalendarKey = "";
+    render();
+    openMobileDetail();
+    openDesktopDetail();
     return;
   }
 
