@@ -1,4 +1,4 @@
-const CACHE_VERSION = "yuso-mail-v2026-06-20-priority-product-1";
+const CACHE_VERSION = "yuso-mail-v2026-06-20-fast-load-1";
 const APP_SHELL = ["./", "./index.html", "./styles.css", "./app.js", "./manifest.webmanifest", "./icon.svg"];
 
 self.addEventListener("install", (event) => {

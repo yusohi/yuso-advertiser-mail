@@ -1,4 +1,6 @@
 let deals = [];
+let analysisCache = new WeakMap();
+let loadDealsPromise = null;
 
 const APP_HOME_URL = "https://yusohi.github.io/yuso-advertiser-mail/";
 if (window.location.protocol === "file:") {
@@ -16,6 +18,8 @@ const LAYOUT_KEY = "yuso-mail-layout";
 const GMAIL_AUTO_CONNECT_KEY = "yuso-mail-gmail-auto-connect-attempted";
 const HIDDEN_DEALS_KEY = "yuso-mail-hidden-deals";
 const ARCHIVED_DEALS_KEY = "yuso-mail-archived-deals";
+const DEALS_CACHE_KEY = "yuso-mail-deals-cache-v2";
+const DEALS_CACHE_MAX_LENGTH = 3_600_000;
 const PASSWORD_COOKIE_MAX_AGE = 60 * 60 * 24 * 30;
 
 const state = {
@@ -90,6 +94,57 @@ function writeStoredSet(key, values) {
     localStorage.setItem(key, JSON.stringify([...values].map(String)));
   } catch {
     // Safari private or in-app sessions can reject localStorage.
+  }
+}
+
+function compactDealForCache(deal) {
+  return {
+    ...deal,
+    messages: Array.isArray(deal?.messages)
+      ? deal.messages.map((message) => ({
+        ...message,
+        attachments: Array.isArray(message?.attachments)
+          ? message.attachments.map((item) => ({
+            filename: item?.filename || "",
+            mimeType: item?.mimeType || "",
+          }))
+          : [],
+      }))
+      : deal?.messages,
+  };
+}
+
+function cacheDealsForFastBoot(updatedAt = "") {
+  try {
+    const value = JSON.stringify({
+      updatedAt,
+      savedAt: new Date().toLocaleString("ko-KR"),
+      deals: deals.map(compactDealForCache),
+    });
+    if (value.length <= DEALS_CACHE_MAX_LENGTH) localStorage.setItem(DEALS_CACHE_KEY, value);
+  } catch {
+    // Cache is only a speed optimization.
+  }
+}
+
+function hydrateDealsFromCache() {
+  if (deals.length) return false;
+  try {
+    const cached = JSON.parse(localStorage.getItem(DEALS_CACHE_KEY) || "null");
+    if (!cached || !Array.isArray(cached.deals)) return false;
+    deals = normalizeDeals(cached.deals);
+    analysisCache = new WeakMap();
+    if (!deals.length) return false;
+    state.updatedAt = `${cached.updatedAt || cached.savedAt || "저장된 메일"} · 최신 확인 중`;
+    state.lastError = "";
+    if (!deals.some((deal) => deal.id === state.selectedId)) {
+      state.selectedId = deals[0]?.id || "";
+    }
+    hideLogin();
+    render();
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -378,6 +433,10 @@ function renderMailAttachments(attachments = []) {
 }
 
 async function loadDeals({ manual = false } = {}) {
+  if (loadDealsPromise) {
+    if (manual) showToast("이미 메일을 확인 중입니다.");
+    return loadDealsPromise;
+  }
   const password = savedPassword();
   if (!password) {
     showLogin();
@@ -385,8 +444,9 @@ async function loadDeals({ manual = false } = {}) {
     return;
   }
 
+  if (!manual) hydrateDealsFromCache();
   setLoading(true);
-  try {
+  loadDealsPromise = (async () => {
     const response = await fetch(`${API_URL}?ts=${Date.now()}`, {
       method: "POST",
       cache: "no-store",
@@ -409,15 +469,22 @@ async function loadDeals({ manual = false } = {}) {
     }
 
     deals = normalizeDeals(payload.deals);
+    analysisCache = new WeakMap();
     state.updatedAt = payload.updatedAt || new Date().toLocaleString("ko-KR");
     state.lastError = "";
     hideLogin();
     if (!deals.some((deal) => deal.id === state.selectedId)) {
       state.selectedId = deals[0]?.id || "";
     }
+    cacheDealsForFastBoot(state.updatedAt);
+  })();
+
+  try {
+    await loadDealsPromise;
   } catch (error) {
     state.lastError = manual ? "새 데이터 확인 실패" : "자동 확인 실패";
   } finally {
+    loadDealsPromise = null;
     setLoading(false);
     render();
   }
@@ -871,7 +938,7 @@ function dealPriority(deal) {
 }
 
 function dealMatchesFilter(deal, filter) {
-  const priority = dealPriority(deal);
+  const priority = cachedDealPriority(deal);
   if (filter === "priority" || filter === "all") return true;
   if (filter === "urgent") return deal.status === "reply" && priority.level === "urgent";
   if (filter === "soon") return deal.status === "reply" && (priority.level === "urgent" || priority.level === "soon");
@@ -879,7 +946,7 @@ function dealMatchesFilter(deal, filter) {
 }
 
 function sortByPriority(a, b) {
-  const priorityDiff = dealPriority(b).score - dealPriority(a).score;
+  const priorityDiff = cachedDealPriority(b).score - cachedDealPriority(a).score;
   if (priorityDiff) return priorityDiff;
   return parseDealDate(b).getTime() - parseDealDate(a).getTime();
 }
@@ -1076,11 +1143,49 @@ function matchesBrandFilter(deal) {
   return !state.brandFilter || String(deal?.id || "") === state.brandFilter;
 }
 
+function cachedDealEntry(deal) {
+  let entry = analysisCache.get(deal);
+  if (!entry) {
+    entry = {};
+    analysisCache.set(deal, entry);
+  }
+  return entry;
+}
+
+function cachedDealMessages(deal) {
+  const entry = cachedDealEntry(deal);
+  if (!entry.messages) entry.messages = dealMessages(deal);
+  return entry.messages;
+}
+
+function cachedDealInsight(deal) {
+  const entry = cachedDealEntry(deal);
+  if (!entry.insight) entry.insight = buildDealInsight(deal, cachedDealMessages(deal));
+  return entry.insight;
+}
+
+function cachedDealPriority(deal) {
+  const entry = cachedDealEntry(deal);
+  if (!entry.priority) entry.priority = dealPriority(deal);
+  return entry.priority;
+}
+
+function cachedScheduleEvents(deal) {
+  const entry = cachedDealEntry(deal);
+  if (!entry.scheduleEvents) entry.scheduleEvents = scheduleEventsForDeal(deal);
+  return entry.scheduleEvents;
+}
+
+function cachedProductName(deal) {
+  const entry = cachedDealEntry(deal);
+  if (!entry.productName) entry.productName = extractProductName(deal, cachedDealMessages(deal));
+  return entry.productName;
+}
+
 function dashboardItems() {
   return deals.filter(matchesBrandFilter).map((deal) => {
-    const messages = dealMessages(deal);
-    const insight = buildDealInsight(deal, messages);
-    const priority = dealPriority(deal);
+    const insight = cachedDealInsight(deal);
+    const priority = cachedDealPriority(deal);
     return {
       deal,
       insight,
@@ -1095,7 +1200,7 @@ function allCalendarEvents() {
   const seen = new Set();
   const rawEvents = deals
     .filter(matchesBrandFilter)
-    .flatMap(scheduleEventsForDeal);
+    .flatMap(cachedScheduleEvents);
   return consolidateScheduleEvents(rawEvents)
     .filter((event) => {
       const key = [event.type, event.key, event.deal.id, event.title, event.text].join("|");
@@ -1114,7 +1219,7 @@ function renderPriorityTasks(items) {
   if (!tasks.length) return `<p class="dashboard-empty">지금 바로 답장할 메일은 없습니다.</p>`;
   return tasks
     .map((item, index) => {
-      const productName = extractProductName(item.deal);
+      const productName = cachedProductName(item.deal);
       const action = conciseActionLabel(item.action);
       return `
         <button class="task-card ${escapeAttr(item.priority.level)}" data-id="${escapeAttr(item.deal.id)}" type="button">
@@ -1369,7 +1474,7 @@ function filteredDeals() {
   const query = state.query.trim().toLowerCase();
   const items = deals
     .filter((deal) => {
-      const priority = dealPriority(deal);
+      const priority = cachedDealPriority(deal);
       const matchesFilter = dealMatchesFilter(deal, state.filter);
       const matchesBrand = matchesBrandFilter(deal);
       const haystack =
@@ -1431,9 +1536,8 @@ function renderList() {
   $("#dealList").innerHTML = items
     .map(
       (deal) => {
-        const messages = Array.isArray(deal.messages) ? deal.messages : fallbackMessages(deal);
-        const insight = buildDealInsight(deal, messages);
-        const priority = dealPriority(deal);
+        const insight = cachedDealInsight(deal);
+        const priority = cachedDealPriority(deal);
         const primaryAction = insight.nextSteps[0] || deal.nextAction || "내용 확인하기";
         const preview = insight.latestSummary || deal.oneLine || deal.brand || "";
         return `
@@ -2158,11 +2262,11 @@ function renderDetail() {
     $("#detail").innerHTML = `<p class="muted">검색 결과가 없습니다.</p>`;
     return;
   }
-  const messages = deal.messages || fallbackMessages(deal);
+  const messages = cachedDealMessages(deal);
   if (messages.length && !messages.some((_, index) => state.expandedMessages.has(`${deal.id}:${index}`))) {
     state.expandedMessages.add(`${deal.id}:${messages.length - 1}`);
   }
-  const insight = buildDealInsight(deal, messages);
+  const insight = cachedDealInsight(deal);
   const rawMailOpen = state.rawMailOpen.has(String(deal.id));
 
   $("#detail").innerHTML = `
@@ -2529,6 +2633,7 @@ $("#profileButton").addEventListener("click", (event) => {
 
 $("#logoutButton").addEventListener("click", () => {
   clearPassword();
+  storageRemove(DEALS_CACHE_KEY);
   closeAccountPanel();
   closeDetailView();
   deals = [];
