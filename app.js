@@ -20,6 +20,7 @@ const HIDDEN_DEALS_KEY = "yuso-mail-hidden-deals";
 const ARCHIVED_DEALS_KEY = "yuso-mail-archived-deals";
 const DEALS_CACHE_KEY = "yuso-mail-deals-cache-v2";
 const DEALS_CACHE_MAX_LENGTH = 3_600_000;
+const REQUEST_TIMEOUT_MS = 15_000;
 const PASSWORD_COOKIE_MAX_AGE = 60 * 60 * 24 * 30;
 
 const state = {
@@ -216,6 +217,16 @@ function updateSyncStatus() {
   const gmail = state.gmailConnected ? "Gmail 직접 동기화 연결됨" : "Gmail OAuth 연결 필요";
   const suffix = state.lastError ? ` · ${state.lastError}` : ` · ${gmail} · 화면은 1분마다 확인`;
   status.textContent = `유소채널 메일함 · ${state.updatedAt}${suffix}`;
+}
+
+async function fetchWithTimeout(url, options = {}, timeoutMs = REQUEST_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 function escapeHtml(value = "") {
@@ -447,7 +458,7 @@ async function loadDeals({ manual = false } = {}) {
   if (!manual) hydrateDealsFromCache();
   setLoading(true);
   loadDealsPromise = (async () => {
-    const response = await fetch(`${API_URL}?ts=${Date.now()}`, {
+    const response = await fetchWithTimeout(`${API_URL}?ts=${Date.now()}`, {
       method: "POST",
       cache: "no-store",
       headers: {
@@ -482,7 +493,9 @@ async function loadDeals({ manual = false } = {}) {
   try {
     await loadDealsPromise;
   } catch (error) {
-    state.lastError = manual ? "새 데이터 확인 실패" : "자동 확인 실패";
+    state.lastError = error?.name === "AbortError"
+      ? "메일 확인 시간이 초과됨"
+      : manual ? "새 데이터 확인 실패" : "자동 확인 실패";
   } finally {
     loadDealsPromise = null;
     setLoading(false);
@@ -496,7 +509,7 @@ async function postPrivate(url, body = {}) {
     showLogin();
     throw new Error("비밀번호가 필요합니다.");
   }
-  const response = await fetch(`${url}?ts=${Date.now()}`, {
+  const response = await fetchWithTimeout(`${url}?ts=${Date.now()}`, {
     method: "POST",
     cache: "no-store",
     headers: {
@@ -581,10 +594,6 @@ function isGmailReauthError(error) {
 async function ensureGmailReady() {
   const status = await refreshGmailStatus();
   if (!status) return;
-  if (state.gmailConnected) {
-    await syncGmailNow({ silent: true });
-    return;
-  }
   if (state.gmailConfigured && !sessionStorage.getItem(GMAIL_AUTO_CONNECT_KEY)) {
     sessionStorage.setItem(GMAIL_AUTO_CONNECT_KEY, "1");
     showToast("Gmail 연결 화면으로 이동합니다.");
@@ -2397,12 +2406,42 @@ function registerServiceWorker() {
   });
 }
 
+function renderFallbackMailList(error) {
+  const target = $("#dealList");
+  if (!target) return;
+  const items = deals.slice().sort(sortByRecent);
+  const count = $("#resultCount");
+  if (count) count.textContent = `${items.length}건`;
+  target.innerHTML = items.length
+    ? `
+      <div class="fallback-list">
+        <p class="dashboard-empty">화면 정리 중 문제가 있어 기본 목록으로 보여드립니다.</p>
+        ${items.map((deal) => `
+          <a class="fallback-mail-item" href="${escapeAttr(deal.gmail || "#")}" target="_blank" rel="noreferrer">
+            ${avatarMarkup(deal.advertiser || deal.contact, deal.email || deal.contact)}
+            <span>
+              <strong>${escapeHtml(deal.advertiser || deal.contact || "광고 메일")}</strong>
+              <small>${escapeHtml(deal.oneLine || deal.lastTouch || "Gmail 원문 확인")}</small>
+            </span>
+          </a>
+        `).join("")}
+      </div>
+    `
+    : `<div class="empty-list">메일 표시 중 오류가 났습니다. 새로고침을 다시 눌러보세요.</div>`;
+  state.lastError = error?.message ? `화면 표시 오류: ${error.message}` : "화면 표시 오류";
+  updateSyncStatus();
+}
+
 function render() {
-  renderSummary();
-  renderFilters();
-  renderList();
-  renderDetail();
-  renderCalendarModal();
+  try {
+    renderSummary();
+    renderFilters();
+    renderList();
+    renderDetail();
+    renderCalendarModal();
+  } catch (error) {
+    renderFallbackMailList(error);
+  }
 }
 
 document.addEventListener("click", (event) => {
@@ -2724,7 +2763,7 @@ $("#loginForm").addEventListener("submit", async (event) => {
   savePassword(password);
   hideLogin();
   await loadDeals({ manual: true });
-  await ensureGmailReady();
+  refreshGmailStatus();
 });
 
 registerServiceWorker();
@@ -2747,7 +2786,7 @@ async function boot() {
     await syncGmailNow();
     return;
   }
-  await ensureGmailReady();
+  refreshGmailStatus();
 }
 
 boot();
