@@ -838,8 +838,8 @@ function rememberDealState(key, deal) {
 }
 
 function isAdvertisingDeal(deal) {
-  if (!/^https:\/\/mail\.google\.com/i.test(String(deal?.gmail || ""))) return false;
   if (isNewsletterDeal(deal)) return false;
+  if (!/^https:\/\/mail\.google\.com/i.test(String(deal?.gmail || ""))) return false;
   const latestExternal = latestExternalMessage(deal);
   const text = [
     deal?.advertiser,
@@ -852,6 +852,11 @@ function isAdvertisingDeal(deal) {
   const blocked = /(mrbeastcollab\.sbs|grammarly manager shared|dropsend collaboration|이용권 만료|newsletter|notification|no-?reply|google events|eventsatgoogle|creator club|크리에이터 클럽|final reminder|초대합니다|뉴스레터|트렌드\s*레터|수신\s*거부|unsubscribe|weekly\s+digest|digest|vol\.\s*\d+)/i.test(text);
   if (blocked) return false;
   return true;
+}
+
+function isFallbackVisibleDeal(deal) {
+  if (!deal || isWootsoCompanyDeal(deal) || isNewsletterDeal(deal)) return false;
+  return /^https:\/\/mail\.google\.com/i.test(String(deal?.gmail || ""));
 }
 
 function dealDedupeKey(deal) {
@@ -879,15 +884,33 @@ function betterDeal(left, right) {
   return left;
 }
 
-function normalizeDeals(list = []) {
+function normalizeDeals(list = [], options = {}) {
+  const respectLocalHidden = options.respectLocalHidden !== false;
   const unique = new Map();
+  let locallyHiddenCount = 0;
   for (const deal of Array.isArray(list) ? list : []) {
     if (!deal || isWootsoCompanyDeal(deal)) continue;
-    if (isLocallyHiddenDeal(deal)) continue;
+    if (respectLocalHidden && isLocallyHiddenDeal(deal)) {
+      locallyHiddenCount += 1;
+      continue;
+    }
     if (!isAdvertisingDeal(deal)) continue;
     const key = dealDedupeKey(deal);
     const current = unique.get(key);
     unique.set(key, current ? betterDeal(current, deal) : deal);
+  }
+  if (!unique.size && locallyHiddenCount) {
+    storageRemove(HIDDEN_DEALS_KEY);
+    storageRemove(ARCHIVED_DEALS_KEY);
+    return normalizeDeals(list, { respectLocalHidden: false });
+  }
+  if (!unique.size && Array.isArray(list) && list.length) {
+    for (const deal of list) {
+      if (!isFallbackVisibleDeal(deal)) continue;
+      const key = dealDedupeKey(deal);
+      const current = unique.get(key);
+      unique.set(key, current ? betterDeal(current, deal) : deal);
+    }
   }
   return Array.from(unique.values());
 }
